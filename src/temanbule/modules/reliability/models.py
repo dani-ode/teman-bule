@@ -137,7 +137,7 @@ class DeletionRequest(Base):
     tombstone_version: Mapped[int] = mapped_column(BigInteger, default=1)
     status: Mapped[str] = mapped_column(String(32), default="pending")
     progress: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class BootstrapRun(Base):
