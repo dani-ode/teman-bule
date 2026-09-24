@@ -16,12 +16,17 @@ from temanbule.api.middleware import BodySizeLimitMiddleware, RequestIdMiddlewar
 from temanbule.api.routers import auth as auth_router
 from temanbule.api.routers import billing as billing_router
 from temanbule.api.routers import byok as byok_router
+from temanbule.api.routers import calls as calls_router
 from temanbule.api.routers import google_auth as google_auth_router
 from temanbule.api.routers import health as health_router
 from temanbule.api.routers import internal_runtime as internal_runtime_router
+from temanbule.api.routers import learning as learning_router
+from temanbule.api.routers import media as media_router
 from temanbule.api.routers import plans as plans_router
+from temanbule.api.routers import podcasts as podcasts_router
 from temanbule.api.routers import practice as practice_router
 from temanbule.api.routers import profile as profile_router
+from temanbule.api.routers import toefl as toefl_router
 from temanbule.api.routers import vocabulary as vocabulary_router
 from temanbule.platform.db.engine import create_engine, create_session_factory
 from temanbule.platform.errors import AppError
@@ -122,6 +127,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(byok_router.router)
     app.include_router(practice_router.router)
     app.include_router(vocabulary_router.router)
+    app.include_router(learning_router.router)
+    app.include_router(toefl_router.router)
+    app.include_router(media_router.router)
+    app.include_router(calls_router.router)
+    app.include_router(podcasts_router.router)
     app.include_router(internal_runtime_router.router)
 
     return app
