@@ -30,7 +30,7 @@ class IdempotencyRecord(Base):
     response_status: Mapped[int | None] = mapped_column(Integer)
     response_body: Mapped[str | None] = mapped_column(Text)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     __table_args__ = (
         UniqueConstraint("principal", "operation", "key", name="uq_idempotency_principal_op_key"),
@@ -68,8 +68,10 @@ class BackgroundJob(Base):
     safe_error: Mapped[str | None] = mapped_column(Text)
     trace_id: Mapped[str | None] = mapped_column(String(64))
     payload: Mapped[str] = mapped_column(Text, default="{}")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
 
 class BackgroundJobAttempt(Base):
