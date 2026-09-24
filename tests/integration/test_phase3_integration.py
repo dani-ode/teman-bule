@@ -216,6 +216,56 @@ async def test_completed_session_rejects_new_messages(db: AsyncSession) -> None:
 
 
 @requires_db
+async def test_complete_session_emits_outbox_event_atomically(db: AsyncSession) -> None:
+    """complete_session mencatat conversation.session_completed.v1 di outbox
+    dalam transaksi yang sama; complete ulang tidak menggandakan event."""
+    from temanbule.modules.reliability.models import OutboxEvent
+
+    fx = await _base_fixture(db)
+    service = ConversationService(db)
+    conversation = await service.start_practice_session(
+        user_id=fx["user_id"], agent_code=fx["agent_code"], category_id=fx["category_id"]
+    )
+    await service.append_user_message(
+        user_id=fx["user_id"], session_id=conversation.id, text="hi", client_key=None
+    )
+
+    await service.complete_session(user_id=fx["user_id"], session_id=conversation.id)
+    events = (
+        (
+            await db.execute(
+                select(OutboxEvent).where(
+                    OutboxEvent.aggregate_type == "conversation_session",
+                    OutboxEvent.aggregate_id == conversation.id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(events) == 1
+    assert events[0].event_type == "conversation.session_completed.v1"
+    assert events[0].aggregate_version == 1
+    assert events[0].published_at is None
+
+    # Complete ulang: no-op, tidak ada event kedua
+    await service.complete_session(user_id=fx["user_id"], session_id=conversation.id)
+    events_after = (
+        (
+            await db.execute(
+                select(OutboxEvent).where(
+                    OutboxEvent.aggregate_type == "conversation_session",
+                    OutboxEvent.aggregate_id == conversation.id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(events_after) == 1
+
+
+@requires_db
 async def test_messages_append_only_enforced(db: AsyncSession) -> None:
     fx = await _base_fixture(db)
     service = ConversationService(db)
