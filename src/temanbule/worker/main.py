@@ -68,16 +68,22 @@ async def _process_entry(
     entry_id: str,
     fields: dict[str, Any],
 ) -> None:
-    """Dispatch satu event; ack setelah durable mark published."""
+    """Dispatch satu event ke handler terdaftar; ack setelah durable mark published."""
+    import json
+
     from temanbule.modules.reliability.repository import ReliabilityRepository
+    from temanbule.worker.handlers import EVENT_HANDLERS
 
     event_id = str(fields.get("event_id", ""))
     event_type = str(fields.get("event_type", ""))
     try:
         async with session_factory() as session:
+            handler = EVENT_HANDLERS.get(event_type)
+            if handler is not None:
+                raw_payload = fields.get("payload", "{}")
+                payload = json.loads(raw_payload) if isinstance(raw_payload, str) else {}
+                await handler(session, payload)
             repo = ReliabilityRepository(session)
-            # Dispatch per event type; handler konkrit ditambahkan per slice.
-            # Foundation: tandai published agar at-least-once loop berhenti.
             await repo.mark_outbox_published(event_id)
             await session.commit()
         await dispatcher.ack(entry_id)
