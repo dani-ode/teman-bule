@@ -36,6 +36,17 @@ Provider/model capabilities, encrypted LLM/STT BYOK and SSRF policy; Elean/Willy
 
 Langflow/CallCraft registries, execution contexts, credential broker, practice stream, vocabulary tools, user-owned history. Langflow ingestion/facts/assessment; canonical documents + dual embedding; agent knowledge. Exit: both projections, single-branch failure retry, IDOR/citation tests, no fake tool success, repeat request without double debit.
 
+Urutan vertical slice dalam fase ini:
+
+1. `practice_interaction` lewat HTTP `sync`: input/output tersimpan, auth/ownership, persona, tool dan usage terbukti end-to-end.
+2. Outbox → `conversation_ingestion`: proses rentang pesan yang sudah tersimpan; hasil canonical idempoten.
+3. `dual_embedding_dispatch` → projection Gemini/OpenAI: job terpisah, satu branch gagal dapat diulang tanpa mengulang yang sukses. Fan-out memakai runtime API deterministik, bukan keputusan LLM.
+4. Retrieval canonical memory kembali ke `practice_interaction`: filter owner, provenance dan source version tervalidasi.
+5. `user_fact_extraction`, `learning_assessment` dan agent knowledge ingestion; masing-masing punya checkpoint dan retry sendiri.
+6. Aktifkan chat `stream` dengan metering/partial/cancel semantics yang terbukti. Siapkan kontrak `session_context_preparation`; aktivasi untuk call/playback pada Phase 6–7.
+
+Checkpoint pertama adalah chat → memory → retrieval yang berfungsi, bukan sekadar seluruh canvas tersedia. Semua exit criteria fase tetap berlaku sebelum fase dinyatakan selesai.
+
 ## Phase 4 — Home dan Profile/TOEFL
 
 Published lesson versions/progress/Learn assistance; assessment dashboard and fact correction/deletion. TOEFL deterministic/objective + subjective flow, verified score tool and feedback dual indexing. Exit: scores immutable/bounded, rubric/provenance, plan-consistent async usage.

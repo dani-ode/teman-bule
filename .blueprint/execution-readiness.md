@@ -6,7 +6,7 @@ Status: baseline persiapan implementasi. Milestone adalah gerbang verifikasi, bu
 
 - `.agents/rules/public.md`: konfigurasi dinamis wajib eksternal; tanpa credential/endpoint/harga/limit hardcoded atau mock fallback runtime. Missing required configuration, invalid type dan unexpected state menghasilkan typed failure dengan correlation ID.
 - `.agents/rules/skills.md`: spesifikasi dan pedoman proyek dipusatkan di `.blueprint/`, diindeks melalui `README.md`.
-- `.agents/rules/langflow.md`: Langflow mengelola pemrosesan/workflow sesuai boundary `architecture.md`; custom components di `custom_langflow_components/`, kontrol workflow melalui MCP. Jalur realtime khusus mengikuti keputusan arsitektur yang sudah tertulis.
+- `.agents/rules/langflow.md`: Langflow mengelola pemrosesan/workflow sesuai boundary `architecture.md`; custom components di `custom_langflow_components/`, akses/kontrol agent melalui MCP sesuai kemampuan server. Pemanggilan aplikasi rutin memakai HTTP adapter sesuai `langflow-flows.md`; project MCP tidak otomatis menyediakan edit/import canvas. Jalur realtime khusus mengikuti keputusan arsitektur yang sudah tertulis.
 - `.agents/rules/callcraft.md`: seluruh AI-selected tool/function execution melalui CallCraft/MCP; JSON spec di `custom_callcraft_spec/`. CRUD deterministik memakai domain service sesuai `architecture.md`.
 - Konstanta protokol/domain yang memang ditetapkan spesifikasi berbeda dari konfigurasi dinamis. Perubahan kontrak harus terversi; angka bisnis, timeout, kapasitas dan parameter deployment harus mempunyai sumber konfigurasi/policy yang disahkan.
 - Test doubles hanya untuk pengujian terisolasi dan diberi label jelas; tidak membuktikan kompatibilitas vendor dan tidak boleh menjadi runtime fallback.

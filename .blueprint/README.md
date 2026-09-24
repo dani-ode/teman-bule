@@ -1,11 +1,13 @@
 # TemanBule Backend Blueprint
 
-> Versi 3.0.0 — spesifikasi target produksi, tahap desain/persiapan; belum implementasi.
+> Versi 3.1.0 — spesifikasi target produksi; backend dan executable flows belum diimplementasikan. Draft kontrak dan adapter persiapan tersedia.
 > Bahasa utama: Indonesia. Rules `.agents/rules/` berlaku untuk seluruh fase.
 
 TemanBule adalah backend pembelajaran bahasa Inggris dengan persona **Elean** dan **Willy**, dua mode penggunaan **VIP** (wallet token prabayar melalui Xendit) dan **Advance** (BYOK LLM/STT), serta lima halaman frontend: Home, Chat, Call, Podcast, Profile. Tidak ada subscription bulanan/tahunan pada scope ini.
 
 ## Peta Dokumen / Urutan Baca
+
+Untuk memahami arah implementasi, mulai dari `architecture.md` → `backend-layout.md` → `langflow-flows.md` → `implementation-plan.md`. Dokumen lain menjadi referensi detail sesuai capability yang sedang dikerjakan.
 
 1. `product-requirements.md`: fitur, batas scope, acceptance produk.
 2. `architecture.md`: otoritas komponen dan jalur realtime/background.
@@ -34,8 +36,11 @@ Baca `execution-readiness.md`, periksa keputusan yang memblokir ticket di `decis
 
 ## Aturan Mengikat
 
+- Arsitektur target: **modular monolith, DDD pragmatis, ports/adapters**. API, durable worker dan realtime worker berbagi modul/use case; aturan bisnis tetap dimiliki backend.
 - PostgreSQL adalah sumber kebenaran; Astra adalah projection yang dapat dibangun ulang.
 - Langflow pusat AI non-realtime, ingestion, ekstraksi fakta, assessment, dan indexing. LiveKit worker menjalankan STT → LLM → ElevenLabs langsung untuk latency; prompt/persona tetap artifact terversi.
+- Chat dan background rutin memakai Langflow HTTP adapter; MCP untuk akses workflow oleh agent sesuai kemampuan server. Target Workflow API v2 diverifikasi melalui DEC-10 sebelum migrasi konfigurasi v1.
+- Pesan/transcript asli disimpan backend sebelum ingestion. Langflow mengolah data turunan; SQL job tetap pemilik retry dan completion.
 - Semua tool/function calling AI melalui CallCraft. CRUD deterministik, auth, pembayaran, dan ledger tetap domain backend.
 - Provider/model dipilih dari database aktif, bukan string bebas dari user. Seed provider aktif hanya `gemini` dan `openai`; kemampuan model harus diverifikasi.
 - TTS ElevenLabs dan seluruh embedding ditanggung platform, tidak mendebit wallet VIP dan tidak menggunakan BYOK.

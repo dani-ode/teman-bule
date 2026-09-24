@@ -1,5 +1,16 @@
 # Architecture
 
+## Gaya Arsitektur
+
+**Modular monolith dengan DDD pragmatis dan ports/adapters.** Satu codebase backend mempunyai proses API, durable worker, dan realtime worker yang dapat dijalankan terpisah. Pemisahan proses mengikuti kebutuhan eksekusi; ownership domain tetap berada pada modul backend. Langflow adalah orchestrator AI eksternal, bukan pemilik aturan bisnis aplikasi.
+
+- **DDD:** modul mengikuti kemampuan bisnis, istilah domain dan pemilik data. Invariants seperti saldo, ownership, published version dan lifecycle ditegakkan oleh modul pemilik.
+- **Ports/adapters:** use case memakai interface; PostgreSQL, Langflow, CallCraft dan SDK vendor dihubungkan melalui adapter. HTTP, job consumer dan LiveKit menjadi pintu masuk ke use case yang sama.
+- **Event-driven untuk background:** perubahan domain dan outbox disimpan atomik, lalu worker memproses event secara at-least-once. Ini bukan event sourcing; state otoritatif tetap tabel PostgreSQL.
+- **Pragmatis:** aggregate/value object dipakai ketika ada invariant yang perlu dijaga. CRUD sederhana cukup dengan use case dan repository; tidak perlu microservices, CQRS penuh atau lapisan tambahan tanpa kebutuhan.
+
+Ini adalah arsitektur target. Struktur source dan kepatuhan boundary dibuktikan saat implementasi; folder saja tidak membuktikan penerapan DDD. Detail modul ada di `backend-layout.md`, transport workflow di `langflow-flows.md`.
+
 ## Boundary dan Otoritas
 
 | Komponen | Tanggung jawab |
@@ -26,6 +37,20 @@ Client <-> LiveKit <-> realtime worker -> STT -> LLM -> ElevenLabs
                               |-> CallCraft -> internal domain API
                               +-> persisted turns/usage/outbox -> background Langflow
 ```
+
+## Jalur Eksekusi Utama
+
+| Kebutuhan | Jalur | Pemilik state |
+|---|---|---|
+| Chat / Learn | Client → FastAPI → Langflow HTTP API → respons JSON atau SSE | Modul backend menyimpan pesan, status dan usage |
+| Call / video / interupsi podcast | Client ↔ LiveKit ↔ realtime worker → provider langsung | Modul backend menyimpan transcript/checkpoint; worker mengatur media |
+| Ingestion / facts / assessment / embedding | PostgreSQL + outbox → durable worker → Langflow HTTP API | SQL job menentukan retry, dedupe dan completion |
+| Discovery / pemanggilan flow oleh agent internal | Agent → Langflow MCP → published flow | Backend tetap memvalidasi execution context dan scope |
+| Function call pilihan AI | Langflow atau realtime worker → CallCraft → domain API | Modul pemilik menegakkan invariant dan transaksi |
+
+Pesan asli dan transcript disimpan oleh backend/realtime worker **sebelum** pengolahan background. Langflow menghasilkan data turunan (summary, facts, assessment, chunks, vectors) dan menyimpan hasil melalui scoped runtime API/adapter; kegagalan ingestion tidak menghilangkan sumber percakapan. Astra hanya projection dari sumber canonical PostgreSQL.
+
+Podcast memakai Langflow untuk persiapan dokumen/naskah dan pengolahan transcript. Playback, speaker switching, barge-in dan resume berjalan langsung di realtime worker.
 
 ## AI Runtime Snapshot
 

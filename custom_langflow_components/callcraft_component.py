@@ -44,7 +44,7 @@ IGNORED_METADATA_KEYS: set = {
 
 # 6. Base URL Server Langflow untuk Resolusi File Upload Chat
 # Digunakan untuk mengubah path file relatif dari chat menjadi URL lengkap.
-LANGFLOW_DEFAULT_BASE_URL: str = os.environ.get("LANGFLOW_BASE_URL") or os.environ.get("LANGFLOW_URL") or "https://langflow.flyup.id"
+LANGFLOW_DEFAULT_BASE_URL: str = os.environ.get("LANGFLOW_BASE_URL") or os.environ.get("LANGFLOW_URL") or "http://localhost:7860"
 
 # 7. Ekstensi & Key Khusus File untuk Validasi File
 KNOWN_FILE_EXTENSIONS: set = {
@@ -302,7 +302,7 @@ class CallcraftAPIComponent(Component):
         StrInput(
             name="langflow_base_url",
             display_name="Langflow Base URL",
-            info="Base URL server Langflow untuk resolusi URL lengkap file upload dari chat (misal: https://langflow.flyup.id). Default mengacu pada environment variable LANGFLOW_BASE_URL.",
+            info="Base URL server Langflow untuk resolusi URL lengkap file upload dari chat (misal: http://localhost:7860). Default mengacu pada environment variable LANGFLOW_BASE_URL.",
             value=LANGFLOW_DEFAULT_BASE_URL,
             required=False,
             advanced=True,

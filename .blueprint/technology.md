@@ -27,7 +27,7 @@ Target modular monolith Python 3.12: satu codebase dengan proses API, durable wo
 
 ## Planned Layout
 
-`src/temanbule/{api,application,domain,infrastructure,realtime,worker}`; domain never imports provider/framework SDK. Infrastructure submodules: auth/google/mail/crypto, payments, metering, SQL/Redis, Langflow/CallCraft, embeddings/Astra, storage, speech. Versioned prompts/flow exports under future `langflow/`; realtime references same published persona artifacts. Tests split unit/integration/contract/e2e/evaluation.
+Layout tunggal mengikuti `backend-layout.md`: `src/temanbule/{api,worker,realtime,platform,modules}`. Setiap modul memiliki domain/application/infrastructure/contracts sesuai kebutuhan; domain tidak mengimpor SDK provider/framework. Adapter vendor berada pada infrastructure modul pemilik, sedangkan plumbing bersama berada pada platform. Versioned prompts/flow exports under future `langflow/`; realtime references same published persona artifacts. Tests split unit/integration/contract/e2e/evaluation.
 
 Provider SDKs and LiveKit plugins pinned only after verified availability/compatibility. `requirements.txt` direct compatible ranges → resolver-generated `requirements.lock` with hashes; no production floating install. Custom Langflow components may need a separate lock matching deployed Langflow runtime. Library version or API shape must not be invented in blueprint.
 

@@ -32,6 +32,26 @@ Di dalam modul, pisahkan `domain/` (invariants/state/value objects), `applicatio
 
 ## Aturan dependensi
 
+### Penerapan DDD yang proporsional
+
+Modul adalah batas ownership logis dalam satu aplikasi. Tidak setiap folder harus menjadi bounded context atau service mandiri. Batas awal berikut menjadi acuan review dan dapat dipertajam ketika use case diimplementasikan:
+
+| Area | Modul | Ownership utama |
+|---|---|---|
+| Identitas | `identity` | Account, principal, session dan akses |
+| Komersial | `catalog`, `billing` | Katalog/plan oleh catalog; wallet, reservation dan settlement oleh billing |
+| Interaksi | `conversations`, `vocabulary` | Pesan/transcript/sesi; vocabulary milik pengguna |
+| Pembelajaran | `learning`, `assessments` | Materi/progress; assessment, rubric dan score |
+| Knowledge | `knowledge` | Fakta dengan provenance, canonical chunks dan status vector projection |
+| Media dan podcast | `media`, `podcasts` | File lifecycle; script/version dan playback state |
+| Integrasi AI | `ai_runtime` | Snapshot, execution grant, flow registry dan invocation coordination |
+
+Nama modul/area tidak otomatis menentukan aggregate. Tentukan batas transaksi dari invariant use case; misalnya reservation dan settlement hanya berubah melalui billing. Langflow tidak menulis langsung tabel domain untuk melewati invariant. Fakta pengguna dikelola knowledge, sedangkan perubahan preferensi profil tetap melalui pemilik profil di identity.
+
+Mulai dari use case konkret. Tambahkan domain entity/value object, port atau domain event ketika membantu menjaga aturan atau mengisolasi integrasi. Hindari generic repository, base service dan event bus in-process jika hanya menambah indirection.
+
+### Dependency dan transaksi
+
 1. Domain tidak mengimpor FastAPI, SQLAlchemy, Redis atau SDK vendor. Application memakai domain dan typed ports. Infrastructure mengimplementasikan ports; composition root memasang implementasinya.
 2. Handler HTTP, consumer job dan realtime adapter memakai application use cases. Mereka tidak menyalin aturan billing/ownership atau langsung memutasi tabel modul lain.
 3. Antarmodul memakai application interface/kontrak published, bukan repository/model ORM internal. Circular dependencies harus diselesaikan melalui orchestration/ports/events.

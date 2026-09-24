@@ -15,7 +15,7 @@ Status awal seluruh baris: **open**. Peran di bawah adalah tanggung jawab yang p
 | DEC-07 | Produk/API Xendit, webhook auth/status/dedupe, timeout lookup, refund dan sandbox/live fixtures | Integrasi pembayaran | M2 checkout aktif | open |
 | DEC-08 | Model VIP/BYOK/background, capabilities, metering/cancel/unknown usage dan katalog terverifikasi | Integrasi AI | M2 catalog aktif; M3 invocation | open |
 | DEC-09 | Gemini/OpenAI embedding model/revision/dimension/task/normalization; sepuluh collection dan reindex | Integrasi AI | M3 indexing/retrieval | open |
-| DEC-10 | Deployment Langflow, streaming/cancel, MCP, component/import/export dan secret non-persistence | Integrasi AI + operasi | M3 flow aktif | open |
+| DEC-10 | Versi deployment Langflow; target Workflow API v2 + developer API flag, migrasi adapter/config v1; sync/stream/background, restart recovery/cancel, kemampuan project vs management MCP, component/import/export dan secret non-persistence | Integrasi AI + operasi | M3 flow aktif | open |
 | DEC-11 | CallCraft format/auth/MCP, binding endpoint, trusted context, idempotency/errors | Integrasi AI | M3 tool aktif | open |
 | DEC-12 | DTO/JSON Schema rinci, payload/list/context limits, SSE replay retention, timeout; progress first-write/enum, fact policy dan tool allowlist | Backend + produk + frontend | Kontrak fitur terkait, M3 tool/flow | open |
 | DEC-13 | Persona Elean/Willy, artifact/version, voice binding; rubric dan score bounds TOEFL | Pemilik produk + integrasi AI | M3 persona; M4 TOEFL/TTS | open |
