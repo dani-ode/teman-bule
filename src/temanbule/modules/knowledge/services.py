@@ -17,7 +17,7 @@ import json
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from temanbule.modules.conversations.models import (
@@ -32,6 +32,7 @@ from temanbule.modules.knowledge.models import (
     KnowledgeDocument,
 )
 from temanbule.modules.reliability.models import BackgroundJob
+from temanbule.modules.reliability.outbox import record_outbox_event
 from temanbule.platform.errors import ConflictError, NotFoundError, ValidationError
 from temanbule.platform.security import new_ulid, sha256_hex
 
@@ -161,7 +162,38 @@ class IngestionService:
         )
         self.session.add(extraction)
         await self.session.flush()
+
+        # Outbox atomik: facts & assessment jobs independen mengikuti event ini.
+        record_outbox_event(
+            self.session,
+            aggregate_type="conversation_session",
+            aggregate_id=session_id,
+            aggregate_version=await self._next_aggregate_version(session_id),
+            event_type="conversation.extraction_committed.v1",
+            payload={
+                "extraction_id": extraction.id,
+                "session_id": session_id,
+                "owner_user_id": owner_user_id,
+                "source_start": source_start,
+                "source_end": source_end,
+                "flow_version": flow_version,
+            },
+        )
+        await self.session.flush()
         return extraction
+
+    async def _next_aggregate_version(self, session_id: str) -> int:
+        from temanbule.modules.reliability.models import OutboxEvent
+
+        current = (
+            await self.session.execute(
+                select(func.coalesce(func.max(OutboxEvent.aggregate_version), 0)).where(
+                    OutboxEvent.aggregate_type == "conversation_session",
+                    OutboxEvent.aggregate_id == session_id,
+                )
+            )
+        ).scalar_one()
+        return current + 1
 
 
 class KnowledgeService:

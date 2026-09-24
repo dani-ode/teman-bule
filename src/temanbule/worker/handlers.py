@@ -26,6 +26,72 @@ from temanbule.platform.security import new_ulid
 
 INGESTION_FLOW_VERSION = "conv-ing.v1"
 INGESTION_RANGE_SIZE = 50
+JOB_PURPOSE_FACT_EXTRACTION = "user_fact_extraction"
+JOB_PURPOSE_ASSESSMENT = "learning_assessment"
+FACTS_FLOW_VERSION = "fact-ext.v1"
+ASSESSMENT_FLOW_VERSION = "assessment.v1"
+
+
+async def handle_extraction_committed(session: AsyncSession, payload: dict[str, Any]) -> None:
+    """Extraction canonical committed → facts & assessment jobs independen.
+
+    Idempoten per (extraction, flow); kedua job punya checkpoint/retry sendiri
+    (langflow-flows.md: masing-masing punya checkpoint dan retry sendiri).
+    """
+    extraction_id = str(payload.get("extraction_id", ""))
+    session_id = str(payload.get("session_id", ""))
+    owner_user_id = str(payload.get("owner_user_id", ""))
+    source_start = payload.get("source_start")
+    source_end = payload.get("source_end")
+    if not extraction_id or not session_id or not owner_user_id:
+        raise NotFoundError("Payload event tidak lengkap.")
+    if not isinstance(source_start, int) or not isinstance(source_end, int):
+        raise NotFoundError("Payload event tidak lengkap (range).")
+
+    from temanbule.modules.conversations.models import ConversationExtraction
+
+    extraction = (
+        await session.execute(
+            select(ConversationExtraction).where(
+                ConversationExtraction.id == extraction_id
+            )
+        )
+    ).scalar_one_or_none()
+    if extraction is None or extraction.owner_user_id != owner_user_id:
+        raise NotFoundError("Extraction tidak ditemukan.")
+
+    now = datetime.now(UTC)
+    for purpose, flow_version in (
+        (JOB_PURPOSE_FACT_EXTRACTION, FACTS_FLOW_VERSION),
+        (JOB_PURPOSE_ASSESSMENT, ASSESSMENT_FLOW_VERSION),
+    ):
+        dedupe_key = f"{purpose}:{extraction_id}:{flow_version}"
+        existing = (
+            await session.execute(
+                select(BackgroundJob.id).where(BackgroundJob.dedupe_key == dedupe_key)
+            )
+        ).scalar_one_or_none()
+        if existing is None:
+            session.add(
+                BackgroundJob(
+                    id=new_ulid(),
+                    dedupe_key=dedupe_key,
+                    purpose=purpose,
+                    run_after=now,
+                    payload=json.dumps(
+                        {
+                            "extraction_id": extraction_id,
+                            "session_id": session_id,
+                            "owner_user_id": owner_user_id,
+                            "source_start": source_start,
+                            "source_end": source_end,
+                            "flow_version": flow_version,
+                        },
+                        sort_keys=True,
+                    ),
+                )
+            )
+    await session.flush()
 
 
 async def handle_session_completed(session: AsyncSession, payload: dict[str, Any]) -> None:
@@ -93,4 +159,5 @@ async def handle_session_completed(session: AsyncSession, payload: dict[str, Any
 
 EVENT_HANDLERS: dict[str, Any] = {
     "conversation.session_completed.v1": handle_session_completed,
+    "conversation.extraction_committed.v1": handle_extraction_committed,
 }
