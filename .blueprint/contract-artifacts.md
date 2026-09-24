@@ -31,6 +31,8 @@ Seluruh tool JSON disimpan di `custom_callcraft_spec/` mengikuti `.agents/rules/
 - `direct_realtime_call` dan `podcast_runtime` adalah label purpose runtime kontrak, bukan workflow Langflow baru.
 - Lifecycle vocabulary mengikuti `product-requirements.md`. DTO tambahan (misalnya `profile_version`, struktur extraction minimal, `provenance_ref`) adalah rancangan v1 yang harus dibuktikan saat backend contract slice.
 - Catalog flow saat ini kontrak semantik; per-flow input/output JSON Schema rinci, canvas export dan fixtures aktual menjadi gate implementasi berikutnya, bukan diklaim sudah tersedia.
+- `flows.v1.json` memakai format katalog v1 dengan `artifact_version: 2.0.0` dan input envelope v3. Breaking draft change mengganti token flow dengan service-bound `execution_ref`; seluruh consumer draft v2 harus dimigrasikan eksplisit. Common CallCraft request dan RuntimeRequest tetap schema v1 pada hop masing-masing.
+- RuntimeContext Python saat ini belum mendukung shared service jobs tanpa plan. Gate perluasan schema/version tercatat di `runtime-components.md`; perubahan blueprint tidak mengklaim adapter itu sudah mendukung semua flow.
 
 ## Gate sebelum staged/active
 

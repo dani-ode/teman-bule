@@ -8,7 +8,7 @@ Token aplikasi adalah unit saldo internal, berbeda dari token input/output provi
 |---|---|---|
 | Chat/Learn AI, LLM call/podcast, vision frame, subjective TOEFL | Platform key, debit sesuai usage/rate | BYOK LLM, tanpa debit wallet |
 | Voice note/call/interupsi podcast STT | Platform key, debit sesuai metering | BYOK STT, tanpa debit wallet |
-| Podcast outline/script dan user-requested regenerate | Platform key, estimasi + reserve sebelum job | BYOK LLM, snapshot credential reference |
+| Podcast outline/script dan user-requested regenerate | Platform key, estimasi + reserve sebelum job | BYOK LLM, snapshot credential record ID; redeemable reference baru per attempt |
 | ElevenLabs TTS termasuk dua suara podcast | Platform expense, **zero wallet debit** | Platform expense |
 | Document parsing non-AI, embedding kedua provider, query embedding | Platform expense, **zero wallet debit** | Platform expense |
 | Background fakta/memori/assessment longitudinal, indexing | Platform background model/key, **zero wallet debit** | Platform background model/key |
@@ -47,7 +47,7 @@ Status order: `created → pending → paid|expired|failed|cancelled`; `paid →
 
 ## Plan Switching
 
-`PUT /v1/me/plan` mengubah pilihan untuk pekerjaan baru secara optimistic concurrency. Blok dengan 409 jika ada call/playback aktif, invocation belum settled/reconciled, atau generation job nonterminal. Saldo VIP dan credential Advance tetap ada. Aktivasi Advance memerlukan selection LLM/STT aktif dan credential valid; video juga memerlukan vision. Tidak ada fallback ke key admin bila BYOK gagal.
+`PUT /v1/me/plan` mengubah pilihan untuk pekerjaan baru secara optimistic concurrency. Blok dengan 409 jika ada call/playback aktif, invocation user-plan belum terminal/settled/reconciled, atau user-requested generation/evaluation job nonterminal. Platform-funded ingestion/embedding tidak memblokir pergantian plan dan tidak mengambil alih plan baru. Saldo VIP dan credential Advance tetap ada. Aktivasi Advance memerlukan selection LLM/STT aktif dan credential valid; video juga memerlukan vision. Tidak ada fallback ke key admin bila BYOK gagal.
 
 ## Acceptance Finansial
 

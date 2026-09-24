@@ -1,6 +1,6 @@
 # TemanBule Backend Blueprint
 
-> Versi 3.1.0 — spesifikasi target produksi; backend dan executable flows belum diimplementasikan. Draft kontrak dan adapter persiapan tersedia.
+> Versi 3.2.0 — spesifikasi target produksi; backend dan executable flows belum diimplementasikan. Draft kontrak dan adapter persiapan tersedia. Versi schema/artifact individual berkembang terpisah.
 > Bahasa utama: Indonesia. Rules `.agents/rules/` berlaku untuk seluruh fase.
 
 TemanBule adalah backend pembelajaran bahasa Inggris dengan persona **Elean** dan **Willy**, dua mode penggunaan **VIP** (wallet token prabayar melalui Xendit) dan **Advance** (BYOK LLM/STT), serta lima halaman frontend: Home, Chat, Call, Podcast, Profile. Tidak ada subscription bulanan/tahunan pada scope ini.
@@ -29,6 +29,11 @@ Untuk memahami arah implementasi, mulai dari `architecture.md` → `backend-layo
 18. `decision-register.md`: keputusan terbuka, penanggung jawab berbasis peran, blocker per capability dan contract spikes.
 19. `backend-layout.md`: rancangan layout aplikasi, import/transaction boundaries dan kontrak sebelum handler.
 20. `foundation-backlog.md`: ticket Phase 1, dependency, acceptance/failure evidence dan verifikasi foundation.
+21. `database-bootstrap.md`: migration, seed idempoten, provisioning registry/Astra dan publication/ingestion.
+
+## Acuan Saat Dokumen Beririsan
+
+Produk/biaya: `product-requirements.md` dan `billing-plans.md`. Ownership/dependency: `architecture.md` dan `backend-layout.md`. Data/seed: `postgresql-schema.md`, `astra-collections.md`, `database-bootstrap.md`. Wire contracts: `api-events.md`, `langflow-flows.md`, `runtime-components.md` dan katalog JSON terkait. Urutan/status: `implementation-plan.md`, `decision-register.md`, `execution-readiness.md`. Perubahan lintas acuan diperbarui bersama; daftar tabel/flow adalah target, bukan bukti sudah diimplementasikan.
 
 ## Mulai Implementasi
 

@@ -11,21 +11,21 @@ Collection fisik terpisah per scope, provider, model revision dan dimension. Vec
 | `user_memory` | Ringkasan, fakta terkonfirmasi/diizinkan, koreksi | `owner_user_id`, source aktif, retention |
 | `learning_content` | Published lesson chunks | content/version/access/publication |
 | `toefl_feedback` | Feedback, bukan score otoritatif | `owner_user_id`, rubric/source version |
-| `agent_knowledge` | Pengetahuan Elean/Willy yang diterbitkan admin | `agent_id`, knowledge version, publication |
+| `agent_knowledge` | Pengetahuan Elean/Willy yang diterbitkan admin | Membership `agent_version_ids`, knowledge version, publication |
 | `podcast_sources` | Paper chunks privat | `owner_user_id` AND `podcast_id` AND source version |
 
-Lima scope × dua provider = sepuluh collection aktif awal. Nama dari `ASTRA_COLLECTION_<SCOPE>_<GEMINI|OPENAI>`; profiles/model/dimension ada di registry. Private/shared dipisahkan fisik. Knowledge umum bisa diassign ke kedua agent lewat canonical association eksplisit; user paper tidak menjadi agent knowledge publik.
+Lima scope × dua provider = sepuluh collection query-active untuk produk lengkap. Provisioning bertahap mengikuti fitur; setiap scope aktif tetap punya kedua provider. Nama bootstrap dari `ASTRA_COLLECTION_<SCOPE>_<GEMINI|OPENAI>`; binding environment/profile/generation, metric dan metadata index policy ada di registry. Generation reindex dapat menambah collection sementara. Private/shared dipisahkan fisik. Knowledge umum bisa diassign ke kedua agent lewat `knowledge_agent_bindings`; user paper tidak menjadi agent knowledge publik. Urutan provisioning: `database-bootstrap.md`.
 
 ## Document Contract
 
-Required: `_id`, `$vector`, `text`, `canonical_chunk_id`, `owner_user_id` (null hanya shared published), `visibility`, `scope`, `source_id`, `source_version`, `chunk_index`, `content_hash`, `embedding_profile_id`, `embedding_model_revision`, `dimension`, `schema_version`, `projection_generation`, `created_at`, `retention_until`; conditional `agent_id`, `podcast_id`, `page_start/end`, `session_id`.
+Required: `_id`, `$vector`, `text`, `canonical_chunk_id`, `owner_user_id` (null hanya shared published), `visibility`, `scope`, `source_id`, `source_version`, `chunk_index`, `content_hash`, `embedding_profile_id`, `embedding_model_revision`, `dimension`, `schema_version`, `projection_generation`, `created_at`, `retention_until` (nullable hanya bila retention policy mengizinkan); conditional `agent_version_ids`, `knowledge_version`, `podcast_id`, `page_start/end`, `session_id`. Array membership filter agent version dan metadata indexing harus diverifikasi pada DEC-09; jangan mengganti dengan agent display name.
 
 ID deterministik hash dari canonical chunk ID + source version + embedding profile + projection generation. `$vector` finite numbers, length persis dimension. Metadata identity/filter diisi trusted component dari execution context, bukan dari model output atau PDF.
 
 ## Fan-out dan Consistency
 
 1. Langflow ekstraksi/chunk menghasilkan canonical refs; trusted runtime API commit `knowledge_documents`, `knowledge_chunks` dan outbox dalam SQL.
-2. Coordinator membuat dua `embedding_projection_jobs`, unique `(chunk_id, source_version, profile_id, generation)`.
+2. Workflow `dual_embedding_dispatch` memakai trusted runtime API untuk membuat dua `background_jobs` bertipe projection, dedupe `(chunk_id, source_version, profile_id, generation)`. `embedding_projections` menyimpan status target; tidak ada tabel job embedding terpisah.
 3. Dua branch menjalankan embed + upsert idempoten; acknowledgement baru setelah hash/model/dimension/source version tervalidasi.
 4. Record `embedding_projections` per branch: `pending|running|ready|retry_scheduled|failed|deleted`. Overall document `ready` hanya bila kedua profile complete. Satu gagal → `partial`, retry hanya branch gagal; jangan mengulang branch sukses tanpa alasan.
 5. Reconciliation memeriksa missing/stale vectors, counts/hash dan tombstone. Race update/delete dicegah dengan source-version fencing; stale upsert tidak menjadi hasil visible dan cleanup wajib.
@@ -38,4 +38,5 @@ Query mengikuti snapshot embedding profile: Gemini LLM → profile Gemini, OpenA
 - Agent knowledge difilter agent version; learning published knowledge dicari terpisah dari private memory. Merge memakai limit terversi; score lintas model tidak dibandingkan mentah.
 - Top-k, threshold, maximum context bytes dan allowed scopes adalah registry policy. Semua teks retrieval adalah untrusted context; citation hanya ke resource authorized.
 - Reindex membuat generation baru, memverifikasi kedua provider, lalu atomic activation registry. Old generation dipertahankan sampai in-flight snapshot selesai sebelum cleanup.
+- Retrieval memvalidasi kembali publication, ownership, retention dan source/tombstone terhadap canonical SQL sebelum memasukkan hasil ke konteks. Filter Astra mempersempit kandidat, tetapi stale vector setelah update/delete tidak boleh menjadi sumber otorisasi.
 - Account/source deletion mencakup kedua profile, semua generation lama, cache dan media; verifikasi zero authorized matches. Tombstone tetap mencegah delayed job menghidupkan data.

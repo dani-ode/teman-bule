@@ -1,14 +1,14 @@
 {
-  "artifact_version": "1.0.0",
+  "artifact_version": "2.0.0",
   "status": "draft",
   "artifact_kind": "flow_contract_catalog_not_canvas_export",
   "blueprint_refs": [".blueprint/langflow-flows.md", ".blueprint/astra-collections.md", ".blueprint/realtime-podcast.md"],
   "registry": "ai_flow_registry",
   "input_envelope": {
-    "schema_version": "2",
-    "required": ["schema_version", "request_id", "traceparent", "execution_context_token", "purpose", "resource_refs", "runtime_snapshot_id", "source_version", "input", "policy"],
-    "trusted_fields": ["execution_context_token", "purpose", "resource_refs", "runtime_snapshot_id", "source_version", "policy", "ai_configuration"],
-    "ai_configuration": "verified model ID, ephemeral credential reference and payer; no plaintext key",
+    "schema_version": "3",
+    "required": ["schema_version", "request_id", "traceparent", "execution_ref", "purpose", "resource_refs", "runtime_snapshot_id", "source_version", "input", "policy"],
+    "trusted_fields": ["execution_ref", "purpose", "resource_refs", "runtime_snapshot_id", "source_version", "policy", "ai_configuration"],
+    "ai_configuration": "verified model configuration ID, capability and payer only; no key, bearer token or redeemable credential reference",
     "policy": "backend-issued tool allowlist, retrieval scope, budget and output schema"
   },
   "output_envelope": {
@@ -26,7 +26,7 @@
     {"purpose": "learning_assessment", "input": "interaction evidence and rubric version", "output": "assessment reference and suggested level", "cost": "platform_background", "tools": ["learning.record_assessment"]},
     {"purpose": "learning_content_ingestion", "input": "published lesson version", "output": "canonical chunk references", "cost": "platform_background_if_needed", "tools": []},
     {"purpose": "agent_knowledge_ingestion", "input": "published Elean or Willy knowledge version", "output": "canonical chunk references", "cost": "platform_background_if_needed", "tools": []},
-    {"purpose": "podcast_document_ingestion", "input": "authorized scanned PDF source version", "output": "text, page and canonical chunk references", "cost": "platform_deterministic", "tools": []},
+    {"purpose": "podcast_document_ingestion", "input": "authorized malware-cleared PDF source version; image-only PDF requires separately approved OCR capability", "output": "text, page and canonical chunk references", "cost": "platform_deterministic", "tools": []},
     {"purpose": "podcast_script_generation", "input": "canonical chunks and two persona versions", "output": "outline, Elean/Willy segments and grounded citations", "cost": "plan_llm", "tools": []},
     {"purpose": "toefl_evaluation", "input": "locked answers and published rubric", "output": "verified subjective score and feedback reference", "cost": "plan_llm_objective_deterministic", "tools": ["toefl.record_evaluation"]},
     {"purpose": "toefl_feedback_ingestion", "input": "committed score reference", "output": "canonical feedback chunks", "cost": "platform_background", "tools": []},

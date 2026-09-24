@@ -1,6 +1,6 @@
 # Implementation Plan dan Release Gates
 
-**Tahap sekarang hanya spesifikasi/environment.** Fase berikut belum dikerjakan. Tiap fase coding wajib schema/migration dahulu, lint, strict types, meaningful unit/integration/contract tests, failure-path tests, artifact versioning dan operational docs sebelum dinyatakan selesai.
+**Tahap sekarang persiapan: spesifikasi, environment, kontrak draft dan adapter/test lokal.** Backend aplikasi dan executable workflows belum dikerjakan. Tiap fase coding wajib schema/migration dahulu, lint, strict types, meaningful unit/integration/contract tests, failure-path tests, artifact versioning dan operational docs sebelum dinyatakan selesai.
 
 Pelaksanaan mengikuti milestone dan Definition of Ready/Done di `execution-readiness.md`. Keputusan terbuka dan spike dilacak di `decision-register.md`; status approved/verified hanya diberikan dengan bukti. Gate diterapkan pada ticket/capability terkait, sehingga keputusan fase lanjutan tidak menghambat foundation yang sudah Ready.
 
@@ -13,7 +13,7 @@ Baseline draft JSON sudah tersedia dan diindeks di `contract-artifacts.md`. Guna
 | Komersial | Harga paket, currency/minor unit, token scale/rate card, refund/dispute policy, konfirmasi baseline biaya Advance |
 | Xendit | Pilih produk/API version checkout/payment; auth webhook, status enum, event/reference dedupe, lookup, refund, sandbox/live verified fixtures |
 | Models | Verify existing VIP model identifiers (nilai `.env` bukan bukti model tersedia), STT batch/stream, vision, usage/cancel semantics, Gemini/OpenAI model catalog |
-| Embedding | Dua model/revision/dimension/task type/normalization, sepuluh collections, dual projection/reindex/filter tests |
+| Embedding | Dua model/revision/dimension/document-query task types/normalization; metric/index policy; pasangan collection per scope aktif (sepuluh untuk produk lengkap); dual projection/reindex/filter tests |
 | Langflow | Versi deployment, streaming/cancel, custom components, MCP, secret non-persistence, export/import, internal context/credential broker |
 | CallCraft | Real JSON spec format/auth/MCP/context propagation/idempotency/errors; jangan menebak payload vendor |
 | Google/email | Registered callback sama dengan env, domain/SMTP TLS, delivery, OAuth link/replay flows |
@@ -29,6 +29,8 @@ Pecahan pekerjaan: FND-01 sampai FND-10 di `foundation-backlog.md`; layout dan a
 Python modular layout, dependency resolution/hash lock, config validation, structured errors/traces, Docker API/worker/realtime-worker, SQL/Redis, migrations, outbox/idempotency/audit. Implement email/password/verification/reset/refresh rotation, Google login + explicit linking. Exit: replay/CSRF/ownership tests, restart-safe email/event jobs, backup restore foundation.
 
 ## Phase 2 — Catalog, Agents, Plans dan Billing
+
+Seed/provisioning mengikuti `database-bootstrap.md`: hanya policy/metadata yang disahkan, rerun idempoten, tanpa pengguna/saldo/harga contoh. Model aktif tidak disimpulkan dari provider seed. Astra diprovision bertahap pada slice scope terkait.
 
 Provider/model capabilities, encrypted LLM/STT BYOK and SSRF policy; Elean/Willy versions, plan selection/runtime snapshot. Ledger/reservations/usage adapter, packages/rates, Xendit checkout/inbox/reconciliation/refund. Exit: race saldo, double webhook, no-charge TTS/embedding, unknown usage recovery, secret redaction. Billing must precede billable vertical slice.
 

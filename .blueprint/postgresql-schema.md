@@ -14,6 +14,7 @@ SQL adalah sumber kebenaran. `snake_case`, `timestamptz`, ULID `varchar(26)` ter
 | `oauth_transactions` | id, state_hash UNIQUE, nonce_hash, encrypted_pkce_verifier, intent login/link, bound_user_id nullable, browser_binding_hash, redirect_ref, expires_at, consumed_at |
 | `user_profiles` | user_id PK/FK, display_name, english_level, learning_goals/preferences JSONB |
 | `plans` | code PK (`vip`, `advance`), policy_version, status; no subscription period |
+| `plan_policy_versions` | id, plan_code FK, revision, policy JSONB, status; UNIQUE(plan,revision); published immutable; plans.policy_version mengacu revision milik plan yang sama |
 | `user_plan_selections` | user_id PK/FK, plan_code FK nullable until selected, revision, selected_at |
 | `plan_change_events` | id, user_id, old/new plan, revision, reason, created_at; immutable |
 
@@ -27,11 +28,15 @@ SQL adalah sumber kebenaran. `snake_case`, `timestamptz`, ULID `varchar(26)` ter
 | `user_ai_selections` | user_id, capability (`llm`,`stt`), credential_id, model_id; PK(user,capability); credential owner/provider must match model |
 | `agents` | id, code UNIQUE (`elean`,`willy`), display_name, status, active_version_id |
 | `agent_versions` | id, agent_id, revision, persona_artifact_ref/hash, voice_binding_ref, knowledge_version, status; UNIQUE(agent,revision); published immutable |
-| `ai_flow_registry` | id, environment, purpose, flow_version, langflow_flow_id, input/output schema version, prompt version, required capabilities, tool allowlist, timeout, status; one active per env/purpose |
+| `ai_flow_registry` | id, environment, purpose, flow_version, langflow_flow_id, input/output schema version, prompt version, required capabilities, tool allowlist, timeout, status; UNIQUE(env,purpose,flow_version), one active per env/purpose |
 | `tool_registry` | id, environment, name, schema_version, callcraft_spec_id, scope, idempotency_policy, timeout, status; UNIQUE(env,name,version) |
-| `runtime_snapshots` | id, user_id, plan/revision, model/credential IDs, agent version refs, prompt/flow version, embedding profile, rate_card_version_id nullable, policy JSONB; immutable, no plaintext secrets |
+| `runtime_snapshots` | id, principal_kind user/service, owner_user_id nullable, service_principal_ref nullable, plan_policy_version_id nullable, model configuration IDs, credential record refs (bukan redeemable token), agent/persona/voice version refs, prompt/flow version, embedding profile refs, rate_card_version_id nullable, policy JSONB; immutable, no plaintext secrets |
+| `execution_grants` | id sebagai execution_ref, request_id, snapshot_id, service identity, owner/resource/purpose/scopes, issued/expires/deadline_at, revoked_at, replay policy/version; reference tidak menjadi bearer credential |
+| `voice_configuration_versions` | id, agent_id, revision, provider, model identifier, voice identifier, settings/hash, status; UNIQUE(agent,revision); published immutable |
 
 Agent rename migration jika data legacy ditemukan: ubah nama/code ke Elean dengan mempertahankan ID/FK, resolve unique conflict eksplisit, versi persona baru dan reindex alias terkait; jangan membuat agent ketiga atau mengganti ID historis.
+
+User-facing snapshot wajib owner dan plan policy; platform maintenance untuk data private tetap membawa owner scope dengan payer platform. Admin ingestion shared memakai service principal tanpa user/plan/wallet. Credential reference sekali pakai dibuat saat attempt, tidak disimpan dalam snapshot. Agent version boleh belum mempunyai voice binding untuk chat-only; audio admission wajib binding terverifikasi.
 
 ## Billing
 
@@ -82,13 +87,15 @@ Shared `conversation_sessions` avoids polymorphic FK without integrity. Call/pod
 | `podcast_segments` | id, script_version_id, position, agent_version_id, text, citations, estimated_ms; UNIQUE(script,position) |
 | `podcast_playbacks` | id, podcast_id, script_version_id, session_id UNIQUE FK, room_name UNIQUE, state, segment_cursor, offset_ms, branch_ref, epoch, elapsed_ms, deadline_at, lease/fencing fields, end_reason |
 | `podcast_audio_cache` | id, owner_user_id, segment_id, voice_config_hash, media_id, checksum; UNIQUE(segment,voice_config_hash) |
-| `knowledge_documents` | id, scope, owner_user_id nullable, source_type/id/version, agent_id nullable, podcast_id nullable, status, canonical_object_ref, content_hash, deleted_at |
+| `knowledge_documents` | id, scope, owner_user_id nullable, source_type/id/version, agent_id nullable, podcast_id nullable, publication_state, indexing_state, canonical_object_ref, content_hash, deleted_at |
 | `knowledge_chunks` | id, document_id, source_version, position, text/object_ref, content_hash, page/section refs; UNIQUE(document,version,position) |
-| `embedding_profiles` | id, provider_id, model_id, model_revision, dimension > 0, task_type/normalization, generation, status |
-| `vector_collection_registry` | id, environment, scope, profile_id, physical_name, status; UNIQUE(env,scope,profile) |
+| `embedding_profiles` | id, provider_id, model_id, model_revision, dimension > 0, document_task_type, query_task_type, normalization, generation, status; UNIQUE(provider,model_id,model_revision,generation) |
+| `vector_collection_registry` | id, environment, scope, profile_id, physical_name, similarity_metric, metadata_index_policy/version, status; UNIQUE(env,scope,profile), UNIQUE(env,physical_name) |
 | `embedding_projections` | id, chunk_id, source_version, profile_id, generation, vector_id, state, content_hash, updated_at; UNIQUE(chunk,version,profile,generation) |
 
 Private document owner mandatory; agent/public learning knowledge owner null only if published via admin authority. Canonical source/chunk data must support complete rebuild of both embeddings.
+
+`knowledge_agent_bindings`: document_id, agent_version_id, knowledge_version; UNIQUE(document,agent_version,knowledge_version), untuk knowledge yang digunakan kedua persona. Metadata vector mempunyai association agent/version yang sama; singular agent_id saja tidak cukup. `indexing_state` adalah pending/partial/ready/failed/deleted, terpisah dari publication; ready berarti kedua profile target complete. Reindex tidak mengubah readiness generation lama yang masih melayani snapshot aktif.
 
 ## Learn, Vocabulary, TOEFL
 
@@ -108,6 +115,10 @@ Private document owner mandatory; agent/public learning knowledge owner null onl
 
 `idempotency_records`: principal/operation/key UNIQUE, request_hash, result/status, expires_at. Payment/ledger dedupe persists beyond generic request TTL. `outbox_events`: event_id PK, aggregate/version/type, reference payload, occurred/published_at. `background_jobs`: dedupe key UNIQUE, outbox ref, purpose, state, attempt_count, run_after, locked_until, fencing token, checkpoint, safe error, trace_id. `tool_executions`: user/tool/idempotency UNIQUE, request hash, authorized context refs, result ref/status. `audit_events`: append-only actor/action/target/result/correlation/redacted metadata. `deletion_requests`: user/source scope, tombstone version, per-store progress and legal retention status.
 
+`background_job_attempts`: id, job_id, attempt_number, execution_grant_id nullable, runtime_snapshot_id nullable untuk non-AI jobs, vendor_job_id nullable, vendor/version nullable, state, started/ended_at, deadline, checkpoint dan safe error; UNIQUE(job,attempt_number). Job menyimpan logical dedupe key; attempt menyimpan dispatch/reconciliation identity. Timeout unknown memakai `reconciliation_required`, bukan langsung retry provider. Reconciliation melanjutkan attempt tanpa membuat logical invocation baru. Embedding job memakai `background_jobs`, bukan tabel `embedding_projection_jobs` terpisah.
+
+`bootstrap_runs`: id, environment, manifest_version, checksum, attempt_number, status, actor/service ref, migration_revision, started/ended_at, redacted change summary/error; UNIQUE(environment,manifest_version,attempt_number). Checksum manifest version dikunci lewat registry/transaction lock agar rerun tidak menerima isi berbeda.
+
 ## Migrations dan States
 
-Alembic forward-only shared environments, reviewed compensating rollback. State fields CHECK constrained; invalid transitions 409 with optimistic version. Jobs `pending → running → succeeded`, transient `retry_scheduled`, terminal `failed|cancelled`. TOEFL `created → in_progress → submitted → evaluating → evaluated|evaluation_failed`. Plan/catalog/voice seeding audited and explicit; no production mock rows or plaintext env values copied to SQL. Deletion financial records follows retention/anonymization policy while private learning/vector/media data is removed.
+Alembic forward-only shared environments, reviewed compensating rollback. State fields CHECK constrained; invalid transitions 409 with optimistic version. Jobs `pending → running → succeeded`, nonterminal `retry_scheduled|reconciliation_required`, terminal `failed|cancelled`. TOEFL `created → in_progress → submitted → evaluating → evaluated|evaluation_failed`. Seed/provisioning mengikuti `database-bootstrap.md`. Deletion financial records follows retention/anonymization policy while private learning/vector/media data is removed.

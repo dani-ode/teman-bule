@@ -14,7 +14,7 @@ Status awal seluruh baris: **open**. Peran di bawah adalah tanggung jawab yang p
 | DEC-06 | Harga paket, currency/minor unit, token scale/rate card, refund/dispute, baseline biaya Advance | Pemilik produk + billing | M2 billing aktif | open |
 | DEC-07 | Produk/API Xendit, webhook auth/status/dedupe, timeout lookup, refund dan sandbox/live fixtures | Integrasi pembayaran | M2 checkout aktif | open |
 | DEC-08 | Model VIP/BYOK/background, capabilities, metering/cancel/unknown usage dan katalog terverifikasi | Integrasi AI | M2 catalog aktif; M3 invocation | open |
-| DEC-09 | Gemini/OpenAI embedding model/revision/dimension/task/normalization; sepuluh collection dan reindex | Integrasi AI | M3 indexing/retrieval | open |
+| DEC-09 | Gemini/OpenAI embedding model/revision/dimension/task/normalization; pasangan collection per scope aktif, sepuluh untuk produk lengkap, dan reindex | Integrasi AI | M3 indexing/retrieval sesuai scope aktif | open |
 | DEC-10 | Versi deployment Langflow; target Workflow API v2 + developer API flag, migrasi adapter/config v1; sync/stream/background, restart recovery/cancel, kemampuan project vs management MCP, component/import/export dan secret non-persistence | Integrasi AI + operasi | M3 flow aktif | open |
 | DEC-11 | CallCraft format/auth/MCP, binding endpoint, trusted context, idempotency/errors | Integrasi AI | M3 tool aktif | open |
 | DEC-12 | DTO/JSON Schema rinci, payload/list/context limits, SSE replay retention, timeout; progress first-write/enum, fact policy dan tool allowlist | Backend + produk + frontend | Kontrak fitur terkait, M3 tool/flow | open |
@@ -22,6 +22,9 @@ Status awal seluruh baris: **open**. Peran di bawah adalah tanggung jawab yang p
 | DEC-14 | ElevenLabs model/voices, LiveKit/plugins, STT stream, vision frames, concurrency/latency/cancel | Integrasi realtime | Phase 6 | open |
 | DEC-15 | Podcast target/max/extension, call quotas, media/PDF limits, scanner, OCR policy | Produk + operasi | Phase 5–7 sesuai capability | open |
 | DEC-16 | Retention/consent/deletion, SLO/RPO/RTO, capacity/budget/domain, backup dan rollout topology | Produk + operasi | Kebijakan data fitur terkait; FND-10 restore; M5 release | open |
+| DEC-17 | Bootstrap manifest/CLI, natural-key conflict policy, seed metadata/title/order, registry lifecycle; Astra naming, metric/index policy dan resumable provisioning sesuai database-bootstrap.md | Backend + integrasi AI | FND-03 mekanisme bootstrap; M2 seed; M3 vector activation | open |
+
+Scope tambahan dari audit: DEC-02 mencakup access-token session-family revocation/cache; DEC-03 job attempts dan unknown-outcome reconciliation; DEC-04 service-principal grants tanpa plan; DEC-09 document/query task types, metadata array filter dan metric; DEC-10 envelope v3 dan migrasi RuntimeContext untuk shared ingestion. Semuanya tetap open sampai ada bukti, bukan otomatis approved oleh koreksi dokumen.
 
 ## Lifecycle dan keputusan arsitektur
 

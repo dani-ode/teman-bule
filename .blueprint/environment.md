@@ -1,6 +1,6 @@
 # Environment Contract v3
 
-`.env` adalah konfigurasi lokal ignored dengan credential existing dipertahankan. `.env.example` memiliki key set identik, tanpa credentials. File ini adalah kontrak settings yang akan diimplementasikan; belum ada loader/service yang menjamin validasi saat ini. Nilai development bukan approval konfigurasi production.
+`.env` adalah konfigurasi lokal ignored; `.env.example` mendokumentasikan key backend yang didukung tanpa credentials. Parity key diperiksa oleh settings validation pada implementasi, bukan diasumsikan identik dengan file lokal. Konfigurasi proses Langflow terpisah di `runtime-components.md`. Backend settings loader belum tersedia, sementara custom runtime client sudah memvalidasi settings miliknya. Nilai development bukan approval konfigurasi production.
 
 ## Sumber Konfigurasi
 
@@ -18,13 +18,13 @@
 | AI | Langflow/CallCraft endpoints/auth/registry, execution signing, internal M2M routes, `BACKGROUND_AI_*`; deployed adapters verified |
 | VIP AI | Billing active, VIP LLM/STT key/provider/model with catalog compatibility; base URL kosong secara eksplisit memakai canonical endpoint katalog, bukan provider fallback |
 | Advance | Crypto envelope encryption/KMS + active catalog LLM/STT; missing/revoked user key gagal pada invocation, bukan admin fallback |
-| Dual embedding | Kedua admin keys, provider base URLs, kedua model/revision/dimension/task types, batch settings dan sepuluh distinct Astra collections |
+| Dual embedding | Kedua admin keys, provider base URLs, model/revision/dimension/document-query task types, batch settings, metric/index policy dan pasangan collection untuk setiap scope aktif; sepuluh untuk produk lengkap |
 | Media | S3 endpoint/bucket/region/auth, signed URL TTL/max upload, scan service URL/auth dan typed scan contract |
 | Voice call | AI + media + selected plan ready, LiveKit, ElevenLabs model/key + voice agent, CALL/REALTIME limits, usage checkpoint policy |
 | Video call | Voice call + VIDEO limits + catalog vision capability; no raw recording setting implicitly enabled |
 | Podcast | AI + media + realtime + dual embedding, both distinct voices, PODCAST duration/parser limits; both personas published |
 | Billing | Xendit product/version/env/auth/merchant/callback, DB packages/rates, expiry and BILLING limits; public key optional if selected hosted checkout product does not need it |
-| Learn / TOEFL | AI + dual indexing; published curriculum/rubric + ready flows; subjective operations follow selected plan |
+| Learn / TOEFL AI | Published curriculum/rubric + flow terkait + dual indexing scope terkait; subjective operations follow selected plan. Read materi/progress dan objective scoring tidak memanggil Langflow |
 | OTEL | Explicit collector endpoint/auth when enabled; sampler range valid and content/key redaction |
 | Production | Approved all RETENTION fields, secure cookies/TLS, strict CORS/redirects, external secret management and measured capacity policy |
 
@@ -42,6 +42,7 @@ Feature gates default false for unfinished capabilities. `FEATURE_AI_ENABLED=tru
 - Xendit environment sandbox/live must match selected credentials/product. `XENDIT_API_VERSION` required explicit vendor-supported value or documented `unversioned` sentinel when endpoint has no version header; never invent header. Localhost webhook URL is a placeholder, not reachable by Xendit: sandbox requires approved public HTTPS callback/tunnel; production public HTTPS mandatory. No remote callback changed in this task.
 - Positive integer bounds; refill percentage strictly between 0 and 100; usage checkpoint shorter than reservation window; lease heartbeat implementation shorter than lease TTL. Call/podcast hard maximum greater than target/closing grace, extension never beyond hard maximum. Upload limits harmonize S3 and parser. Frame TTL/in-flight/bytes/resolution all bounded.
 - Blank required field is error, never zero, magic default or silent feature disable. Errors list variable names only. Never dump `.env`, secrets, DSNs, OAuth tokens, credentials or full settings object to logs.
+- `LANGFLOW_INTERNAL_RUNTIME_BASE_URL` adalah koordinat gateway dari sisi backend; `TEMAN_BULE_RUNTIME_URL` dikonfigurasi terpisah pada server Langflow untuk origin HTTPS gateway yang sama, bersama paths/service token pada `runtime-components.md`. Nama-nama ini bukan alias otomatis. Workflow API v2 memerlukan flag server Langflow dan migrasi adapter eksplisit pada DEC-10.
 
 ## Belum Terisi / Aktivasi
 

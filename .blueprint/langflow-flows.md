@@ -56,7 +56,7 @@ Draft machine-readable daftar flow dan allowlist: `custom_langflow_components/fl
 | `learning_assessment` | Interaction evidence → level/dimension feedback | Platform background | assessment record |
 | `learning_content_ingestion` | Published version → canonical chunks | Platform background if needed | None |
 | `agent_knowledge_ingestion` | Published Elean/Willy knowledge → canonical chunks | Platform background if needed | None |
-| `podcast_document_ingestion` | Authorized scanned PDF → text/pages/chunks | Platform deterministic extraction | None |
+| `podcast_document_ingestion` | Authorized malware-cleared PDF → text/pages/chunks; OCR terpisah | Platform deterministic extraction | None |
 | `podcast_script_generation` | Chunks + two persona versions → outline/segments/citations | Plan LLM | None |
 | `toefl_evaluation` | Locked answers + rubric → bounded subjective score/feedback | Plan LLM; objective deterministic | record evaluation |
 | `toefl_feedback_ingestion` | Committed score → canonical feedback chunks | Platform background | None |
@@ -67,9 +67,11 @@ Draft machine-readable daftar flow dan allowlist: `custom_langflow_components/fl
 
 Tidak ada `realtime_turn` Langflow: direct realtime worker menangani voice/video/podcast interupsi. Auth, wallet, payment, room lifecycle, CRUD dan job retries bukan reasoning flow. Canvas boleh mengorkestrasi branch, tetapi durable completion/retry tetap SQL job + worker; menjalankan dua node tidak membuktikan dual projection selesai.
 
-## Input Envelope v2
+## Input Envelope v3
 
-Required: `schema_version`, `request_id`, `traceparent`, `execution_context_token`, `purpose`, `resource_refs`, `runtime_snapshot_id`, `source_version`, `input`, `policy`. `input` hanya data pengguna/reference; `policy` dibangun backend: tools, retrieval scopes, budget, output schema. `ai_configuration` memuat model ID, ephemeral credential reference dan payer, bukan key. Actor/agent IDs dan owner berasal verified context; queue menyimpan IDs, bukan bearer token atau plaintext input panjang.
+Required: `schema_version: "3"`, `request_id`, `traceparent`, `execution_ref`, `purpose`, `resource_refs`, `runtime_snapshot_id`, `source_version`, `input`, `policy`. `execution_ref` adalah reference grant yang terikat service identity, bukan token. `input` hanya data pengguna/reference; `policy` dibangun backend: tools, retrieval scopes, budget, output schema. `ai_configuration` hanya metadata model configuration ID, capability dan payer. Credential redeemable reference maupun signed execution token tidak melewati canvas/output node. Actor/owner berasal grant terverifikasi; queue menyimpan IDs, bukan bearer token atau plaintext input panjang.
+
+Envelope v3 menggantikan draft v2 yang meminta `execution_context_token` di input flow. Gateway membentuk signed context hanya untuk hop CallCraft → domain API. Trusted provider adapter memperoleh credential langsung dari broker dalam runtime memory. Versi envelope ini terpisah dari Workflow HTTP API v2, format katalog `flows.v1.json`, dan RuntimeRequest v1 milik komponen. Mapping ke input komponen diuji sebagai kontrak tersendiri.
 
 Background job mendapatkan execution context dan credential reference baru pada setiap attempt setelah ownership/status/snapshot diperiksa. Source canonical diambil lewat internal narrow endpoints. AI-selected mutasi wajib CallCraft; trusted component checkpointing/canonical data IO bukan function call dan memakai runtime API dengan scope terpisah.
 
@@ -81,7 +83,7 @@ Usage berasal adapter provider tepercaya, bukan angka yang ditulis LLM. Semua su
 
 ## Alur Background
 
-Persist interaction range → ingestion summary/evidence → facts extraction dan assessment jobs terpisah → canonical chunks → fan-out embeddings. Source ranges + flow version menjadi dedupe key. Fakta low-confidence berstatus proposed; learner preferences eksplisit mengungguli inferensi. Assessment menyimpan rubric/evidence, tidak langsung mengganti level profil tanpa policy/konfirmasi.
+Persist interaction range → ingestion summary/evidence commit → facts extraction dan assessment jobs terpisah. Summary yang sudah canonical dapat langsung memicu dual embedding tanpa menunggu dua job analisis tersebut. Fakta yang memenuhi consent/confirmation policy menjadi canonical revision baru dan memicu indexing sendiri; assessment tetap data terstruktur SQL kecuali diterbitkan sebagai evidence yang diizinkan. Source ranges + flow version menjadi dedupe key. Fakta low-confidence berstatus proposed; learner preferences eksplisit mengungguli inferensi. Assessment menyimpan rubric/evidence, tidak langsung mengganti level profil tanpa policy/konfirmasi.
 
 PDF parsing terjadi dalam sandbox bounded CPU/memory; Langflow mengorkestrasi komponen extractor, tidak mengeksekusi file sebagai kode. Script generation memakai canonical chunks dan page refs, memvalidasi speaker hanya Elean/Willy, durasi dan grounded citations sebelum ready. Objective TOEFL scorer deterministik tidak dapat dioverride evaluator.
 

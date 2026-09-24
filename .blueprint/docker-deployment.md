@@ -11,7 +11,7 @@
 1. Production dijalankan pada satu VPS Ubuntu dengan Docker Engine dan Docker Compose v2.
 2. Apache HTTP Server berjalan di host Ubuntu sebagai reverse proxy dan TLS termination untuk domain publik.
 3. Backend dijalankan melalui Docker Compose dengan service `api`, `worker`, `realtime-worker`, `postgres`, dan `redis`; migration one-shot terpisah.
-4. Public user route dan machine-to-machine tool route diteruskan Apache dengan policy berbeda. Tool route hanya untuk CallCraft, memakai service authentication plus execution token, request/body limit ketat, dan network allowlist atau mTLS bila didukung; ia bukan endpoint berautentikasi pengguna biasa.
+4. Public user route dan machine-to-machine route memakai policy berbeda. `/internal/v1/tools/*` menerima CallCraft dengan service authentication plus signed execution context; runtime/flow-data/credential routes hanya untuk trusted service adapters sesuai audience/scope. Semua internal route deny-by-default dengan request/body limit dan network allowlist atau mTLS bila didukung.
 5. PostgreSQL dan Redis tidak boleh membuka port ke internet atau host. Astra DB, CallCraft MCP, provider AI, STT/TTS, LiveKit, object storage, dan identity provider tetap merupakan layanan external sesuai konfigurasi aplikasi.
 6. Docker Compose yang sama digunakan untuk local development dan production dengan file environment yang berbeda. Production tidak memakai bind mount source code atau hot reload.
 7. Langflow, CallCraft, Astra DB, LiveKit, Google OAuth, Xendit, SMTP, S3, Gemini/OpenAI dan ElevenLabs external. Email/password dan app sessions dikelola backend. Menjalankan Langflow pada stack ini memerlukan ADR/capacity plan terpisah.
@@ -30,7 +30,7 @@
 | `compose.dev.yaml` | Override development opsional untuk bind mount, hot reload, dan port debugging. Tidak dipakai production. |
 | `.env.example` | Daftar variable yang diperlukan tanpa nilai secret. |
 | `.dockerignore` | Mengecualikan `.env`, credential, cache, artifact, dan metadata Git dari build context. |
-| `deploy/apache/temanbule.conf` | Contoh VirtualHost Apache untuk HTTPS reverse proxy dan WebSocket. |
+| `deploy/apache/temanbule.conf` | Target VirtualHost Apache untuk HTTPS API/SSE dan policy internal routes. |
 | `deploy/systemd/temanbule.service` | Unit systemd untuk menjalankan `docker compose up -d` saat VPS boot dan menghentikannya secara bersih. |
 
 ## 3. Service dan Data
@@ -50,13 +50,13 @@
 
 ## 4. Apache Reverse Proxy
 
-- Apache wajib mengaktifkan `mod_proxy`, `mod_proxy_http`, `mod_proxy_wstunnel`, `mod_ssl`, dan `mod_headers`.
+- Apache memakai `mod_proxy`, `mod_proxy_http`, `mod_ssl`, dan `mod_headers`; `mod_proxy_wstunnel` hanya jika endpoint WebSocket aplikasi ditambahkan.
 - VirtualHost HTTP hanya mengalihkan seluruh traffic ke HTTPS.
-- VirtualHost HTTPS meneruskan request API ke `http://127.0.0.1:<port-api>` dan meneruskan endpoint WebSocket ke upstream yang sama menggunakan `ws://`.
-- Apache memiliki `<Location>` terpisah untuk `/internal/v1/tools/` dengan deny-by-default policy, rate/body limit, dan kontrol source network/mTLS bila endpoint CallCraft mendukungnya. Application-level service authentication tetap wajib.
+- VirtualHost HTTPS meneruskan HTTP API dan chat SSE ke `http://127.0.0.1:<port-api>`. Media/signaling LiveKit langsung ke layanan LiveKit eksternal; backend belum menetapkan endpoint WebSocket aplikasi. Proxy WebSocket hanya ditambahkan bila ada kontrak endpoint yang nyata.
+- Apache memiliki policy deny-by-default untuk seluruh `/internal/`, dengan allowlist terpisah per tools/runtime/flow-data/credentials sesuai service caller. Rate/body limit, application service authentication dan audience-bound execution context/reference tetap wajib.
 - Apache menangani sertifikat TLS, termasuk renewal otomatis. Container aplikasi tidak menyimpan private key TLS.
-- Header `X-Forwarded-For`, `X-Forwarded-Proto`, dan `Host` diteruskan. Aplikasi hanya mempercayai forwarded headers dari loopback Apache, bukan dari client langsung.
-- Timeout proxy untuk endpoint streaming dan WebSocket harus dikonfigurasi secara eksplisit agar tidak memutus sesi aktif. Nilainya mengikuti kebutuhan realtime yang ditetapkan aplikasi.
+- Header `X-Forwarded-For`, `X-Forwarded-Proto`, dan `Host` diteruskan setelah sanitasi proxy. Trusted proxy address mengikuti peer Apache yang benar-benar terlihat dari container (dapat berupa Docker gateway, bukan loopback); verifikasi pada deployment, jangan trust semua sumber.
+- Timeout dan buffering proxy SSE harus dikonfigurasi eksplisit sesuai deadline/reconnect aplikasi; timeout media LiveKit dikelola pada runtime LiveKit terpisah.
 - Apache access/error log dan log aplikasi harus dipantau serta tidak boleh memuat API key, authorization token, maupun isi percakapan sensitif.
 
 ## 5. Image dan Konfigurasi
@@ -80,7 +80,7 @@
 ## 7. Acceptance Criteria
 
 1. Request HTTPS publik mencapai `api` melalui Apache tanpa membuka port API ke internet.
-2. Endpoint WebSocket berfungsi melalui Apache dan tidak terputus oleh timeout default yang tidak sesuai.
+2. Chat SSE berfungsi melalui Apache tanpa buffering/timeout yang merusak stream; koneksi LiveKit langsung diverifikasi terpisah pada fase realtime.
 3. PostgreSQL dan Redis tidak dapat diakses dari jaringan publik maupun host port.
 4. Restart `api`, `worker`, atau Redis tidak menghilangkan data PostgreSQL atau event/job durable; duplicate delivery tetap idempoten.
 5. Reboot VPS mengembalikan stack Compose melalui systemd dan Apache dapat kembali meneruskan traffic setelah aplikasi sehat.

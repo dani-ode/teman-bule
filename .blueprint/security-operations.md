@@ -2,7 +2,7 @@
 
 ## Security Baseline
 
-- Validate app JWT issuer/audience/signature/expiry/auth epoch. Google login verifies OIDC issuer/audience/signature/nonce/subject; explicit account linking. Argon2id passwords, single-use verification/reset, refresh rotation/family reuse detection, CSRF/Origin checks and auth throttling are mandatory.
+- Validate app JWT issuer/audience/signature/expiry/auth epoch and active session family as defined in `auth-provider-policy.md`. Google login verifies OIDC issuer/audience/signature/nonce/subject; explicit account linking. Argon2id passwords, single-use verification/reset, refresh rotation/family reuse detection, CSRF/Origin checks and auth throttling are mandatory.
 - Enforce resource ownership in application service/repository queries, including sessions, scores, media, vectors, and credentials.
 - Encrypt BYOK with envelope encryption and key versioning. Plaintext is never logged, returned, queued, placed in audit metadata, or persisted by Langflow.
 - Validate optional provider `base_url`: provider capability enabled, HTTPS, allowed port/host, DNS rebinding protection, private/link-local/metadata IP denial, redirect denial, response size/time limits, and egress policy.

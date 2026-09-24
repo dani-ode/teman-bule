@@ -41,13 +41,14 @@ Error envelope: `{"error":{"code":"INSUFFICIENT_TOKENS","message":"Saldo token t
 
 | Event suffix `.v1` | Producer → consumer |
 |---|---|
-| `conversation.range_recorded`, `conversation.session_completed` | Message/turn commit → ingestion, facts, assessment; includes chat/call/podcast |
+| `conversation.range_recorded`, `conversation.session_completed` | Message/turn commit → ingestion; includes chat/call/podcast; dedupe rentang yang sudah diproses |
+| `conversation.extraction_committed` | Summary/evidence commit → facts dan assessment jobs independen; canonical summary → indexing |
 | `learning.content_published`, `agent.knowledge_published` | Published immutable version → canonical ingestion |
 | `knowledge.canonical_committed` | Canonical source commit → dual embedding dispatch |
 | `embedding.projection_completed`, `embedding.projection_failed` | Branch result → aggregate/reconcile readiness |
 | `podcast.source_uploaded` | Scanned finalized media → document ingestion |
 | `podcast.source_processed` | Canonical source → generation when requested/authorized |
-| `podcast.script_ready`, `podcast.playback_completed` | Script/session commit → UI status, final learning consolidation |
+| `podcast.script_ready`, `podcast.playback_completed` | Script valid → UI status; playback commit → final range ingestion yang belum diproses |
 | `toefl.attempt_submitted`, `toefl.score_recorded` | Submit → evaluation; score → feedback ingestion |
 | `payment.webhook_received`, `payment.topup_paid` | Inbox → reconciliation; ledger commit → notification |
 | `usage.reconciliation_requested`, `wallet.balance_changed` | Meter/ledger → reconciliation and user status |

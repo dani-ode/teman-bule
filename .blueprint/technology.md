@@ -1,6 +1,6 @@
 # Technology dan Dependency Preparation
 
-Target modular monolith Python 3.12: satu codebase dengan proses API, durable worker dan realtime worker terpisah. Langflow/CallCraft/Astra/LiveKit/ElevenLabs/Xendit/Google/S3 adalah external services. Dependency manifests yang ada adalah baseline lama; perubahan/install/lock dilakukan setelah contract spikes pada fase coding, bukan bagian perubahan spec ini.
+Target modular monolith Python 3.12: satu codebase dengan proses API, durable worker dan realtime worker terpisah. Langflow/CallCraft/Astra/LiveKit/ElevenLabs/Xendit/Google/S3 adalah external services. Dependency manifests/locks dan tooling persiapan sudah tersedia sesuai `toolchain.md`; dependency vendor tambahan dikunci setelah contract spike terkait. Backend aplikasi belum diimplementasikan.
 
 | Stack | Tanggung jawab / persiapan |
 |---|---|

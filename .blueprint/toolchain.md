@@ -14,7 +14,7 @@ Python 3.12, uv 0.12.8, GNU Make, Docker Engine dengan Compose v2-compatible CLI
 4. `make infra-up` hanya menjalankan PostgreSQL/Redis internal. Tidak mem-publish port database ke host; aplikasi lokal perlu berjalan dalam network Compose atau dedicated reviewed local override untuk testing.
 5. `make down` menghentikan stack tanpa menghapus volumes. Jangan gunakan `down -v` pada data yang ingin dipertahankan.
 
-Tidak ada fake app/health endpoint. Dockerfile dan application profile sengaja membutuhkan `src/`, `alembic.ini`, `migrations/` nyata. `make build`, `migrate`, `up`, `lint`, `typecheck`, `test` baru berlaku setelah Phase 1. Mereka harus gagal jika artifact belum ada, bukan menampilkan sukses semu.
+Tidak ada fake app/health endpoint. Dockerfile dan application profile membutuhkan `src/`, `alembic.ini`, `migrations/` nyata. `make build`, `migrate`, `up`, `lint`, `typecheck` memerlukan artifact aplikasi. `make test` sudah dapat menjalankan tests adapter persiapan; hasilnya bukan bukti foundation atau integrasi vendor. Migration/build tidak boleh dianggap sukses jika artifact aplikasi belum ada.
 
 ## Entry-point Contract untuk Phase 1
 
@@ -22,7 +22,7 @@ Tidak ada fake app/health endpoint. Dockerfile dan application profile sengaja m
 - Durable worker: `python -m temanbule.worker.main`.
 - LiveKit worker: `python -m temanbule.realtime.main`; CLI/provider dispatch detail diadapter setelah contract spike.
 - Migration: `python -m alembic upgrade head`; one-shot, tidak startup tiap replica.
-- Deployment order: infrastructure healthy → one-shot migration sukses → API/workers → HTTP readiness verification. `make up` tidak otomatis migrate.
+- Deployment order: infrastructure healthy → one-shot migration sukses → seed/provisioning yang diperlukan slice → API/workers → HTTP readiness verification. `make up` tidak otomatis migrate/seed. Runner bootstrap masih target implementasi sesuai `database-bootstrap.md`.
 - `make up` hanya API/durable worker. Realtime explicit `docker compose --env-file .env --env-file .env.deploy --profile realtime up -d realtime-worker` setelah admission/drain settings lolos.
 
 ## Container dan Production Gates

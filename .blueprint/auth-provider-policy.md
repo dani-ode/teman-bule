@@ -6,6 +6,8 @@ Backend mengelola identitas aplikasi. Email disimpan canonical-normalized dengan
 
 Login memerlukan email verified dan account aktif. Access JWT pendek memakai asymmetric signing, issuer/audience/kid, expiry. Refresh opaque token hash-only, rotation per penggunaan, family reuse detection mencabut family. Logout mencabut session; logout-all/password reset mencabut seluruh refresh session dan menaikkan user auth epoch agar access token lama ditolak. Web memakai refresh cookie HttpOnly/Secure/SameSite dan validasi Origin/CSRF pada mutasi berbasis cookie; access token di memory.
 
+Access JWT membawa stable session-family reference; setiap authenticated request memeriksa family aktif dan auth epoch melalui authoritative session lookup/cache dengan revocation semantics yang ditetapkan DEC-02. Logout/reuse detection menolak access token family terkait, sementara logout-all/reset menolak seluruh epoch lama. Referensi family tetap stabil saat refresh token rotation.
+
 ## Google OAuth / OIDC Login
 
 Backend authorization-code flow dengan state, nonce, PKCE S256, redirect URI exact allowlist dan callback `/v1/auth/google/callback`. State/nonce/verifier terikat pada browser transaction, expiring dan single-use. Tukar code server-side; verifikasi ID token signature/JWKS, issuer Google, audience client, expiry, nonce, `sub`, dan `email_verified`. Provider identity unique `(provider, subject)` menjadi kunci login; email bukan identity key federasi.

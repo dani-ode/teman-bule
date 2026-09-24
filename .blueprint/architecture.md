@@ -15,7 +15,7 @@ Ini adalah arsitektur target. Struktur source dan kepatuhan boundary dibuktikan 
 
 | Komponen | Tanggung jawab |
 |---|---|
-| FastAPI | Auth, ownership, katalog/plan resolver, invoice Xendit, wallet ledger, reservasi, credential broker, CRUD/state, room admission, signed media, outbox |
+| Backend modules melalui FastAPI/use cases | Auth, ownership, katalog/plan resolver, payment order Xendit, wallet ledger, reservasi, credential broker, CRUD/state, room admission, signed media, outbox |
 | Realtime worker | LiveKit media, VAD/STT, streaming LLM langsung, frame vision, ElevenLabs, turn cancellation, podcast director, usage checkpoints |
 | Langflow | Chat/Learn reasoning, RAG, PDF/chunk/script, ekstraksi fakta, assessment, TOEFL subjektif, dua embedding projection, background orchestration AI |
 | CallCraft | Registry/schema, routing dan eksekusi seluruh tool/function call dari Langflow maupun realtime worker |
@@ -56,6 +56,8 @@ Podcast memakai Langflow untuk persiapan dokumen/naskah dan pengolahan transcrip
 
 Backend resolves `plan_revision`, agent/persona version, LLM/STT model and credential refs, base URL policy, embedding profile, flow/prompt version, voice mapping, rate card and budgets before operation. Snapshot is immutable for a job/call/playback. Secrets are resolved just-in-time, never stored in the snapshot. Revocation dan model emergency-disable still cancel new invocations within running sessions.
 
+Snapshot menyimpan credential record/config references yang tidak dapat di-redeem, bukan token sekali pakai. User operation mengunci plan policy; platform maintenance mengunci payer platform dan owner scope bila private. Shared admin ingestion memakai service principal tanpa user/plan/wallet. Runtime grant dan provider credential reference baru diterbitkan per attempt. Tidak ada synthetic user untuk menjalankan pekerjaan platform.
+
 VIP resolves provider credentials from platform environment/secret manager. Advance resolves encrypted user credentials separately for LLM/STT. Background maintenance uses platform model/key; it must not unexpectedly consume BYOK or wallet after the foreground action. User-requested podcast generation and subjective TOEFL evaluation do use the job's selected plan. Allocation details: `billing-plans.md`.
 
 ## Langflow-centric Dengan Jalur Realtime Khusus
@@ -67,7 +69,7 @@ CallCraft remains the only execution route for AI-selected functions. Determinis
 ## Identity, Delivery, dan Secret
 
 - Backend-issued access token resolves principal; Google identity is verified at login, not passed around as app authorization.
-- Per-execution signed context includes issuer, audience, user, resource, purpose, permitted tools, expiry, request/trace ID. Prompt/client cannot override it.
+- Per-execution grant mengikat service/principal, owner bila private, resource, purpose, permitted tools, expiry dan request/trace ID. Signed context untuk hop CallCraft/domain API menambahkan issuer/audience; ordinary flow hanya menerima execution_ref. Prompt/client tidak dapat mengubah otoritasnya.
 - Credential broker issues one-use, audience/purpose-bound references. Internal Langflow component or trusted realtime adapter resolves key over authenticated TLS. Delayed jobs obtain fresh references after reauthorization, not expired tokens copied from queue.
 - Langflow run storage, traces and component diagnostics must demonstrably redact/exclude credentials; otherwise BYOK activation is blocked.
 - Domain mutation + outbox commit atomically. Worker acknowledgment follows durable result. Duplicate delivery uses event/job keys; provider requests additionally require invocation identity and reconciliation.
