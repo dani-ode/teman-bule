@@ -1,9 +1,9 @@
 {
   "mcpServers": {
     "callcraft": {
-      "serverUrl": "https://callcraft-api.flyup.id/mcp/v1/sse?user_id=usr_01M2YE0N6ZX9K39CWWG8SVZM46"
+      "serverUrl": "https://callcraft-api.flyup.id/mcp/v1/sse"
     },
-    "lf-hacktiv8_ibm": {
+    "langflow": {
       "command": "uv",
       "args": [
         "run",
