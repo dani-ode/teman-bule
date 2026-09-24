@@ -20,7 +20,9 @@ from temanbule.api.routers import google_auth as google_auth_router
 from temanbule.api.routers import health as health_router
 from temanbule.api.routers import internal_runtime as internal_runtime_router
 from temanbule.api.routers import plans as plans_router
+from temanbule.api.routers import practice as practice_router
 from temanbule.api.routers import profile as profile_router
+from temanbule.api.routers import vocabulary as vocabulary_router
 from temanbule.platform.db.engine import create_engine, create_session_factory
 from temanbule.platform.errors import AppError
 from temanbule.platform.logging import configure_logging, get_request_id
@@ -118,6 +120,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(plans_router.router)
     app.include_router(billing_router.router)
     app.include_router(byok_router.router)
+    app.include_router(practice_router.router)
+    app.include_router(vocabulary_router.router)
     app.include_router(internal_runtime_router.router)
 
     return app

@@ -97,7 +97,7 @@ async def _fixture(db: AsyncSession, *, token_units: int = 700) -> Fixture:
     user = User(id=new_ulid(), normalized_email=f"pay-{new_ulid()}@example.com")
     package = TokenPackageVersion(
         id=new_ulid(),
-        package_code=f"pack-{new_ulid()[:8]}",
+        package_code=f"pack-{new_ulid()[-10:]}",
         revision=1,
         currency="IDR",
         amount_minor=50000,

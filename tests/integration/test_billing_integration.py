@@ -119,7 +119,7 @@ async def test_topup_credit_once_and_balanced(db: AsyncSession) -> None:
 async def test_reserve_and_release_returns_funds(db: AsyncSession) -> None:
     wallet_svc = WalletService(db)
     user = await _make_user(db, f"reserve-{new_ulid()}@example.com")
-    card = await _make_rate_card(db, f"v-{new_ulid()[:8]}")
+    card = await _make_rate_card(db, f"v-{new_ulid()[-10:]}")
     await wallet_svc.credit_topup(user_id=user.id, order_id=new_ulid(), token_units=500)
 
     quote = await wallet_svc.authorize_reservation(
@@ -162,7 +162,7 @@ async def test_reserve_and_release_returns_funds(db: AsyncSession) -> None:
 async def test_settle_cumulative_idempotent(db: AsyncSession) -> None:
     wallet_svc = WalletService(db)
     user = await _make_user(db, f"settle-{new_ulid()}@example.com")
-    card = await _make_rate_card(db, f"v-{new_ulid()[:8]}")
+    card = await _make_rate_card(db, f"v-{new_ulid()[-10:]}")
     await wallet_svc.credit_topup(user_id=user.id, order_id=new_ulid(), token_units=1000)
     quote = await wallet_svc.authorize_reservation(
         user_id=user.id,
@@ -208,7 +208,7 @@ async def test_settle_cumulative_idempotent(db: AsyncSession) -> None:
 async def test_insufficient_balance_rejected(db: AsyncSession) -> None:
     wallet_svc = WalletService(db)
     user = await _make_user(db, f"insufficient-{new_ulid()}@example.com")
-    card = await _make_rate_card(db, f"v-{new_ulid()[:8]}")
+    card = await _make_rate_card(db, f"v-{new_ulid()[-10:]}")
     await wallet_svc.credit_topup(user_id=user.id, order_id=new_ulid(), token_units=100)
 
     with pytest.raises(ConflictError, match="Saldo tidak mencukupi"):
@@ -238,7 +238,7 @@ async def test_concurrent_reserve_same_balance(engine_url: str = DATABASE_URL) -
         session.add(
             RateCardVersion(
                 id=card_id,
-                version=f"v-{new_ulid()[:8]}",
+                version=f"v-{new_ulid()[-10:]}",
                 effective_at=datetime.now(UTC),
                 rounding_policy="half_up",
                 status="published",

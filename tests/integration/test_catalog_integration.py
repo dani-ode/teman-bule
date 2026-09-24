@@ -72,7 +72,7 @@ async def db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def _base_fixture(db: AsyncSession) -> dict[str, str]:
-    suffix = new_ulid()[:8]
+    suffix = new_ulid()[-10:]
     user = User(id=new_ulid(), normalized_email=f"cat-{suffix}@example.com")
     provider = ProviderCatalog(id=new_ulid(), code=f"prov-{suffix}", status="active")
     model = AiModelConfiguration(
@@ -175,7 +175,7 @@ async def test_custom_base_url_rejected_when_provider_disallows(db: AsyncSession
 @requires_db
 async def test_selection_provider_mismatch_rejected(db: AsyncSession) -> None:
     fx = await _base_fixture(db)
-    suffix = new_ulid()[:8]
+    suffix = new_ulid()[-10:]
     other_provider = ProviderCatalog(id=new_ulid(), code=f"other-{suffix}", status="active")
     other_model = AiModelConfiguration(
         id=new_ulid(),
@@ -312,7 +312,7 @@ async def test_plan_switch_blocked_by_open_reservation(db: AsyncSession) -> None
 
     card = RateCardVersion(
         id=new_ulid(),
-        version=f"v-{new_ulid()[:8]}",
+        version=f"v-{new_ulid()[-10:]}",
         effective_at=datetime.now(UTC),
         rounding_policy="half_up",
         status="published",

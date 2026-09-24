@@ -1,0 +1,199 @@
+"""Conversation service (Phase 3): practice sessions + messages.
+
+Kontrak:
+- Session dibuat dengan runtime snapshot (plan/agent terverifikasi backend).
+- Pesan user disimpan SEBELUM invocation AI; sequence atomik per session.
+- client_key (client_message_id) idempoten per session: replay → pesan sama.
+- Ownership ketat: session/pesan privat, cross-owner = 404 (bukan 403 bocor).
+- Agent reply disimpan dengan agent_version_id dan terminal_state.
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from temanbule.modules.catalog.services import RuntimeSnapshotBuilder
+from temanbule.modules.conversations.models import (
+    ConversationMessage,
+    ConversationSession,
+    PracticeCategory,
+    PracticeSession,
+)
+from temanbule.platform.errors import ConflictError, NotFoundError, ValidationError
+from temanbule.platform.security import new_ulid
+
+SESSION_ACTIVE = "active"
+SESSION_COMPLETED = "completed"
+
+ROLE_USER = "user"
+ROLE_AGENT = "agent"
+
+
+class ConversationService:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+        self.snapshots = RuntimeSnapshotBuilder(session)
+
+    async def start_practice_session(
+        self, *, user_id: str, agent_code: str, category_id: str
+    ) -> ConversationSession:
+        category = (
+            await self.session.execute(
+                select(PracticeCategory).where(
+                    PracticeCategory.id == category_id,
+                    PracticeCategory.status == "published",
+                )
+            )
+        ).scalar_one_or_none()
+        if category is None:
+            raise NotFoundError("Kategori practice tidak tersedia.")
+
+        snapshot = await self.snapshots.build_for_user(user_id=user_id, agent_code=agent_code)
+        conversation = ConversationSession(
+            id=new_ulid(),
+            user_id=user_id,
+            kind="chat",
+            state=SESSION_ACTIVE,
+            runtime_snapshot_id=snapshot.id,
+        )
+        self.session.add(conversation)
+        await self.session.flush()
+        agent_version_id = snapshot.agent_version_id
+        if agent_version_id is None:
+            raise ConflictError(
+                "Snapshot tanpa agent version.",
+                code="SNAPSHOT_INVALID",
+            )
+        self.session.add(
+            PracticeSession(
+                session_id=conversation.id,
+                category_id=category.id,
+                agent_version_id=agent_version_id,
+            )
+        )
+        await self.session.flush()
+        return conversation
+
+    async def append_user_message(
+        self,
+        *,
+        user_id: str,
+        session_id: str,
+        text: str,
+        client_key: str | None,
+    ) -> ConversationMessage:
+        """Simpan pesan user; idempoten per client_key dalam session."""
+        if not text.strip():
+            raise ValidationError("Pesan kosong.")
+        conversation = await self._owned_session(user_id, session_id)
+        if conversation.state != SESSION_ACTIVE:
+            raise ConflictError(
+                "Session sudah tidak aktif.",
+                code="SESSION_CLOSED",
+            )
+
+        if client_key is not None:
+            existing = (
+                await self.session.execute(
+                    select(ConversationMessage).where(
+                        ConversationMessage.session_id == session_id,
+                        ConversationMessage.client_key == client_key,
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                return existing
+
+        message = ConversationMessage(
+            id=new_ulid(),
+            session_id=session_id,
+            owner_user_id=user_id,
+            role=ROLE_USER,
+            text=text,
+            sequence=await self._next_sequence(session_id),
+            client_key=client_key,
+        )
+        self.session.add(message)
+        await self.session.flush()
+        return message
+
+    async def append_agent_message(
+        self,
+        *,
+        session_id: str,
+        owner_user_id: str,
+        agent_version_id: str,
+        text: str,
+        terminal_state: str = "completed",
+    ) -> ConversationMessage:
+        """Simpan respons agent setelah invocation terverifikasi."""
+        message = ConversationMessage(
+            id=new_ulid(),
+            session_id=session_id,
+            owner_user_id=owner_user_id,
+            role=ROLE_AGENT,
+            agent_version_id=agent_version_id,
+            text=text,
+            sequence=await self._next_sequence(session_id),
+            terminal_state=terminal_state,
+            generated_at=datetime.now(UTC),
+        )
+        self.session.add(message)
+        await self.session.flush()
+        return message
+
+    async def complete_session(self, *, user_id: str, session_id: str) -> ConversationSession:
+        conversation = await self._owned_session(user_id, session_id, for_update=True)
+        if conversation.state == SESSION_COMPLETED:
+            return conversation
+        conversation.state = SESSION_COMPLETED
+        conversation.ended_at = datetime.now(UTC)
+        await self.session.flush()
+        return conversation
+
+    async def list_messages(
+        self, *, user_id: str, session_id: str, limit: int = 50
+    ) -> list[ConversationMessage]:
+        await self._owned_session(user_id, session_id)
+        rows = (
+            (
+                await self.session.execute(
+                    select(ConversationMessage)
+                    .where(ConversationMessage.session_id == session_id)
+                    .order_by(ConversationMessage.sequence.asc())
+                    .limit(min(limit, 200))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return list(rows)
+
+    async def get_owned_session(self, *, user_id: str, session_id: str) -> ConversationSession:
+        return await self._owned_session(user_id, session_id)
+
+    async def _next_sequence(self, session_id: str) -> int:
+        """Sequence berikutnya; aman untuk concurrent append dalam transaksi."""
+        current = (
+            await self.session.execute(
+                select(func.coalesce(func.max(ConversationMessage.sequence), 0)).where(
+                    ConversationMessage.session_id == session_id
+                )
+            )
+        ).scalar_one()
+        return current + 1
+
+    async def _owned_session(
+        self, user_id: str, session_id: str, *, for_update: bool = False
+    ) -> ConversationSession:
+        stmt = select(ConversationSession).where(ConversationSession.id == session_id)
+        if for_update:
+            stmt = stmt.with_for_update()
+        conversation = (await self.session.execute(stmt)).scalar_one_or_none()
+        # Cross-owner dan missing sama-sama 404: tidak membocorkan eksistensi.
+        if conversation is None or conversation.user_id != user_id:
+            raise NotFoundError("Session tidak ditemukan.")
+        return conversation

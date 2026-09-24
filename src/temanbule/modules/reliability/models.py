@@ -16,7 +16,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from temanbule.platform.base import Base
+from temanbule.platform.base import Base, utcnow
 
 
 class IdempotencyRecord(Base):
@@ -108,7 +108,7 @@ class ToolExecution(Base):
     context_refs: Mapped[str | None] = mapped_column(Text)
     result_ref: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class AuditEvent(Base):
