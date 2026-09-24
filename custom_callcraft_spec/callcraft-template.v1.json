@@ -1,0 +1,32 @@
+{
+  "version": "1.0",
+  "name": "${tool.name}",
+  "slug": "${deployment.spec_slug}",
+  "description": "${tool.description}",
+  "requestSchema": {"$ref": "${compiled.tool.inputSchema}"},
+  "responseSchema": {"$ref": "${compiled.tool.outputSchema}"},
+  "prompts": {
+    "positivePrompt": "Gunakan kontrak tool yang dipilih dan kembalikan hanya hasil eksekusi backend yang telah tervalidasi.",
+    "negativePrompt": "Jangan mengarang hasil, identitas pemilik, scope, atau status keberhasilan. Kegagalan backend bukan keberhasilan tool.",
+    "additionalPrompt": ""
+  },
+  "toolsConfig": {
+    "enabled": true,
+    "toolChoice": "auto",
+    "tools": [
+      {
+        "name": "${deployment.vendor_tool_name}",
+        "description": "${tool.description}",
+        "agentRole": "Teman Bule scoped domain tool executor",
+        "textContext": "${compiled.tool_contract_context}",
+        "includeImageContext": false
+      }
+    ]
+  },
+  "config": {
+    "allowAdditionalPrompt": false,
+    "useExternalApiKey": true,
+    "externalModelName": "${runtime.model_identifier}",
+    "externalApiKey": null
+  }
+}

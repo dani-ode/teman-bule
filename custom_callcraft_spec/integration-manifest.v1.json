@@ -1,0 +1,31 @@
+{
+  "artifact_version": "1.0.0",
+  "status": "draft",
+  "blueprint_refs": [".blueprint/callcraft-tools.md", ".blueprint/implementation-plan.md", ".blueprint/contract-artifacts.md"],
+  "catalog": "custom_callcraft_spec/tools.v1.json",
+  "vendor_template": "custom_callcraft_spec/callcraft-template.v1.json",
+  "template_importable": false,
+  "rendering": {
+    "cardinality": "one spec per catalog tool",
+    "id_and_projectId": "assigned or resolved during vendor deployment; store actual spec ID in tool_registry",
+    "schema": "resolve tool input/output $refs and placeholders before vendor import",
+    "model": "resolve through verified runtime snapshot and active model catalog",
+    "secrets": "ephemeral runtime credential delivery; never persist in generated spec",
+    "error_mapping": "vendor transport/AI failures map to common response errors; a successful HTTP response alone is not tool success"
+  },
+  "mcp": {
+    "status": "pending_deployment_verification",
+    "name_mapping": "replace each dot with underscore; verify uniqueness before deployment",
+    "inputSchema": "compiled tool.inputSchema only; trusted context injected server-side",
+    "outputSchema": "compiled common response envelope narrowed to tool.outputSchema on success",
+    "routing": "MCP -> CallCraft -> scoped internal backend endpoint",
+    "discovery": "only active registry tools intersected with verified purpose, scopes and resource policy",
+    "failure": "map domain failed status to MCP error semantics supported by deployed SDK; preserve structured error",
+    "activation_gates": ["transport and SDK schema support", "cancel/deadline propagation", "backend execution binding", "service auth and execution context propagation"]
+  },
+  "unverified_vendor_capabilities": [
+    "The supplied export describes AI extraction tools, but does not demonstrate HTTP backend binding.",
+    "Do not invent vendor endpoint/auth/binding fields; capture a real redacted export and execution fixture in Phase 0.",
+    "Do not forward execution tokens through prompts or LLM-visible arguments."
+  ]
+}

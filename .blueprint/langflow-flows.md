@@ -2,7 +2,16 @@
 
 Langflow adalah pusat proses AI non-realtime dan background. Setiap flow punya immutable version, input/output JSON Schema, prompt version, model capabilities, timeout, cost owner, tool allowlist, evaluation dataset dan registry lifecycle `draft|staged|active|deprecated|disabled`. Flow export bersih dari secret disimpan saat implementasi; komponen custom di `custom_langflow_components/`.
 
+## Deployment URLs
+
+- UI/API dan resolusi file upload: `LANGFLOW_BASE_URL=https://langflow.flyup.id`.
+- Eksekusi flow: `https://langflow.flyup.id/api/v1/run/{flow_id}` (`LANGFLOW_RUN_PATH=/api/v1/run`).
+- MCP streamable: `https://langflow.flyup.id/api/v1/mcp/project/{project_id}/streamable`; isi `LANGFLOW_MCP_STREAMABLE_URL` sesuai `LANGFLOW_PROJECT_ID` deployment. Konfigurasi agent ada di `.agents/mcp_config.json`.
+- `LANGFLOW_INTERNAL_RUNTIME_BASE_URL` adalah alamat runtime gateway backend Teman Bule, bukan URL server Langflow.
+
 ## Workflow Wajib
+
+Draft machine-readable daftar flow dan allowlist: `custom_langflow_components/flows.v1.json`. Kontrak adapter: `custom_langflow_components/callcraft-component.v1.json`. Keduanya bukan canvas export; lihat `contract-artifacts.md` untuk schema/export gates dan hubungan registry.
 
 | Flow key | Trigger dan hasil | Cost/credential | Tools |
 |---|---|---|---|

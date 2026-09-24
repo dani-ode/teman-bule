@@ -1,0 +1,31 @@
+{
+  "artifact_version": "1.0.0",
+  "status": "draft",
+  "artifact_kind": "component_contract_not_langflow_export",
+  "blueprint_refs": [".blueprint/langflow-flows.md", ".blueprint/callcraft-tools.md", ".blueprint/contract-artifacts.md"],
+  "implementation_reference": "custom_langflow_components/callcraft_component.py",
+  "project_adapter": "custom_langflow_components/teman_bule_callcraft_component.py",
+  "runtime_contract": "custom_langflow_components/runtime-broker.v1.json",
+  "class_name": "CallcraftAPIComponent",
+  "observed_inputs": ["user_id", "public_key", "secret_key", "project_id", "spec_id", "input_data", "payload"],
+  "observed_transport": {"method": "POST", "path": "/v1/call", "spec_header": "X-CALL-SPEC-ID"},
+  "target_contract": {
+    "catalog": "custom_callcraft_spec/tools.v1.json",
+    "input": "validated tool arguments plus separate trusted runtime context",
+    "output": "validated common response envelope narrowed to selected tool result",
+    "spec_resolution": "tool_registry by environment/name/schema_version",
+    "credentials": "runtime-only service credentials; CallCraft user_id is not Teman Bule actor_user_id",
+    "request_payload": "explicit schema-bound mapping; no automatic context-token interpolation into prompts",
+    "timeout": "registry timeout bounded by invocation deadline",
+    "error": "normalize transport/vendor/domain failures; only backend-verified succeeded status permits success claim"
+  },
+  "activation_gates": [
+    "Verify installed Langflow/LFX version and exported component format",
+    "Verify input/output mapping against actual CallCraft execution fixtures",
+    "Implement separate trusted execution-context transport",
+    "Verify cancellation and deadline propagation",
+    "Verify credentials and private payloads absent from exports, logs and debug traces",
+    "Disable implicit file heuristics for domain tool arguments unless explicitly declared by schema",
+    "Validate schema and tool authorization before execution"
+  ]
+}

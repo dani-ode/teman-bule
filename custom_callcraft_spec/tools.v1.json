@@ -1,0 +1,113 @@
+{
+  "artifact_version": "1.0.0",
+  "status": "draft",
+  "artifact_kind": "domain_tool_contract_catalog",
+  "blueprint_refs": [".blueprint/callcraft-tools.md", ".blueprint/postgresql-schema.md", ".blueprint/product-requirements.md"],
+  "schema_resolution": "Resolve relative $ref from custom_callcraft_spec/; compile request.arguments with inputSchema and succeeded response.result with outputSchema. Require idempotency_key when idempotency is required.",
+  "requestSchema": {"$ref": "common.schema.json#/$defs/request"},
+  "responseSchema": {"$ref": "common.schema.json#/$defs/response"},
+  "runtime": {
+    "method": "POST",
+    "registry": "tool_registry",
+    "deployment_fields": ["environment", "callcraft_spec_id", "timeout", "status"],
+    "trusted_context": ["execution_context_token", "request_id", "idempotency_key"],
+    "authorization": "Validate service credentials, token issuer/audience/expiry, purpose, tool, owner, scopes and correlation; never accept actor_user_id from model arguments.",
+    "audit": "tool_executions + audit_events: tool/version, verified actor/context refs, correlation, request hash, idempotency and result reference; redact tokens and private payloads.",
+    "retry": "Only retry classified transient failures within configured deadline; reuse mutation idempotency key and identical arguments. Reconcile unknown outcomes before claiming success.",
+    "activation_gates": ["CallCraft endpoint routing/context propagation verified", "registry timeout configured", "bounded input and output policy configured", "contract fixtures verified against backend"]
+  },
+  "tools": [
+    {
+      "name": "vocabulary.save", "schema_version": "1", "description": "Save or upsert vocabulary for the verified owner.",
+      "endpoint": "/internal/v1/tools/vocabulary:save", "scope": "vocabulary:write", "idempotency": "required",
+      "purposes": ["practice_interaction", "direct_realtime_call", "podcast_runtime"],
+      "inputSchema": {"type": "object", "additionalProperties": false, "properties": {"lemma": {"$ref": "common.schema.json#/$defs/text"}, "language": {"$ref": "common.schema.json#/$defs/text"}, "definition": {"$ref": "common.schema.json#/$defs/text"}, "example": {"$ref": "common.schema.json#/$defs/text"}, "source_message_id": {"$ref": "common.schema.json#/$defs/id"}}, "required": ["lemma", "language"]},
+      "outputSchema": {"$ref": "common.schema.json#/$defs/resource"},
+      "invariants": ["Normalize lemma within owner/language", "Validate source ownership", "Realtime and podcast require explicit user intent"]
+    },
+    {
+      "name": "vocabulary.update_status", "schema_version": "1", "description": "Update owned vocabulary lifecycle with optimistic concurrency.",
+      "endpoint": "/internal/v1/tools/vocabulary:update-status", "scope": "vocabulary:write", "idempotency": "required",
+      "purposes": ["practice_interaction", "direct_realtime_call"],
+      "inputSchema": {"type": "object", "additionalProperties": false, "properties": {"entry_id": {"$ref": "common.schema.json#/$defs/id"}, "target_state": {"$ref": "common.schema.json#/$defs/state"}, "expected_version": {"$ref": "common.schema.json#/$defs/version"}}, "required": ["entry_id", "target_state", "expected_version"]},
+      "outputSchema": {"$ref": "common.schema.json#/$defs/resource"},
+      "invariants": ["Enforce lifecycle new -> learning -> review -> mastered", "Reject stale expected_version", "Realtime requires explicit user intent"]
+    },
+    {
+      "name": "vocabulary.get", "schema_version": "1", "description": "Read one owned vocabulary entry by ID or exact lemma and language.",
+      "endpoint": "/internal/v1/tools/vocabulary:get", "scope": "vocabulary:read", "idempotency": "not_required",
+      "purposes": ["practice_interaction", "direct_realtime_call"],
+      "inputSchema": {"oneOf": [
+        {"type": "object", "additionalProperties": false, "properties": {"entry_id": {"$ref": "common.schema.json#/$defs/id"}}, "required": ["entry_id"]},
+        {"type": "object", "additionalProperties": false, "properties": {"lemma": {"$ref": "common.schema.json#/$defs/text"}, "language": {"$ref": "common.schema.json#/$defs/text"}}, "required": ["lemma", "language"]}
+      ]},
+      "outputSchema": {"type": "object", "additionalProperties": false, "properties": {"entry_id": {"$ref": "common.schema.json#/$defs/id"}, "version": {"$ref": "common.schema.json#/$defs/version"}, "lemma": {"$ref": "common.schema.json#/$defs/text"}, "language": {"$ref": "common.schema.json#/$defs/text"}, "definition": {"type": ["string", "null"]}, "example": {"type": ["string", "null"]}, "state": {"$ref": "common.schema.json#/$defs/state"}}, "required": ["entry_id", "version", "lemma", "language", "definition", "example", "state"]},
+      "invariants": ["No raw filters", "No owner or credential fields returned", "Realtime requires explicit user intent"]
+    },
+    {
+      "name": "profile.update_preferences", "schema_version": "1", "description": "Update explicitly requested learner preferences.",
+      "endpoint": "/internal/v1/tools/profile:update-preferences", "scope": "profile:write", "idempotency": "required", "purposes": ["practice_interaction"],
+      "inputSchema": {"type": "object", "additionalProperties": false, "minProperties": 1, "properties": {"english_level": {"$ref": "common.schema.json#/$defs/text"}, "learning_goals": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "common.schema.json#/$defs/text"}}, "tutoring_preferences": {"type": "object", "minProperties": 1, "additionalProperties": {"type": ["string", "boolean"]}}}},
+      "outputSchema": {"type": "object", "additionalProperties": false, "properties": {"profile_version": {"$ref": "common.schema.json#/$defs/version"}}, "required": ["profile_version"]},
+      "activation_gates": ["Define english_level enum and exact tutoring preference key/value allowlist; replace open preference schema before activation"],
+      "invariants": ["No identity, role, credential or provider catalog updates", "Explicit preferences outrank inference"]
+    },
+    {
+      "name": "learning.get_progress", "schema_version": "1", "description": "Read progress for explicitly selected lessons.",
+      "endpoint": "/internal/v1/tools/learning:get-progress", "scope": "learning:read", "idempotency": "not_required", "purposes": ["learning_assistance", "direct_realtime_call"],
+      "inputSchema": {"oneOf": [
+        {"type": "object", "additionalProperties": false, "properties": {"lesson_id": {"$ref": "common.schema.json#/$defs/id"}}, "required": ["lesson_id"]},
+        {"type": "object", "additionalProperties": false, "properties": {"lesson_ids": {"$ref": "common.schema.json#/$defs/ids"}}, "required": ["lesson_ids"]}
+      ]},
+      "outputSchema": {"type": "object", "additionalProperties": false, "properties": {"items": {"type": "array", "items": {"type": "object", "additionalProperties": false, "properties": {"lesson_id": {"$ref": "common.schema.json#/$defs/id"}, "content_version_id": {"$ref": "common.schema.json#/$defs/id"}, "status": {"$ref": "common.schema.json#/$defs/text"}, "completion_percent": {"type": "number", "minimum": 0, "maximum": 100}}, "required": ["lesson_id", "content_version_id", "status", "completion_percent"]}}}, "required": ["items"]},
+      "activation_gates": ["Define progress status enum and maximum lesson count"], "invariants": ["Owner-scoped DTO only"]
+    },
+    {
+      "name": "learning.record_progress", "schema_version": "1", "description": "Record versioned progress when a future flow policy explicitly enables it.",
+      "endpoint": "/internal/v1/tools/learning:record-progress", "scope": "learning:write", "idempotency": "required", "purposes": [],
+      "inputSchema": {"type": "object", "additionalProperties": false, "properties": {"content_version_id": {"$ref": "common.schema.json#/$defs/id"}, "status": {"$ref": "common.schema.json#/$defs/text"}, "completion_percent": {"type": "number", "minimum": 0, "maximum": 100}, "expected_version": {"$ref": "common.schema.json#/$defs/version"}}, "required": ["content_version_id", "status", "completion_percent", "expected_version"]},
+      "outputSchema": {"$ref": "common.schema.json#/$defs/resource"},
+      "activation_gates": ["Define progress states and first-write version semantics", "Approve an explicit flow allowlist before AI exposure"],
+      "invariants": ["Default deny for every AI flow", "Learning assistance remains read-only", "Published immutable content version required"]
+    },
+    {
+      "name": "conversation.persist_extraction", "schema_version": "1", "description": "Persist canonical extraction with message provenance.",
+      "endpoint": "/internal/v1/tools/conversation:persist-extraction", "scope": "ingestion:write", "idempotency": "required", "purposes": ["conversation_ingestion"],
+      "inputSchema": {"type": "object", "additionalProperties": false, "properties": {"source_message_ids": {"$ref": "common.schema.json#/$defs/ids"}, "extraction": {"type": "object", "additionalProperties": false, "properties": {"schema_version": {"const": "1"}, "summary": {"$ref": "common.schema.json#/$defs/text"}, "evidence_message_ids": {"$ref": "common.schema.json#/$defs/ids"}}, "required": ["schema_version", "summary", "evidence_message_ids"]}}, "required": ["source_message_ids", "extraction"]},
+      "outputSchema": {"$ref": "common.schema.json#/$defs/resource"},
+      "invariants": ["All messages belong to authorized session and source range", "Evidence IDs subset of source IDs", "Flow version comes from verified runtime", "Cannot rewrite raw messages", "Dedupe session/range/schema/flow version"]
+    },
+    {
+      "name": "toefl.record_evaluation", "schema_version": "1", "description": "Commit rubric-validated subjective evaluation of a locked attempt.",
+      "endpoint": "/internal/v1/tools/toefl:record-evaluation", "scope": "toefl:evaluate", "idempotency": "required", "purposes": ["toefl_evaluation"],
+      "inputSchema": {"type": "object", "additionalProperties": false, "properties": {"attempt_id": {"$ref": "common.schema.json#/$defs/id"}, "rubric_version": {"$ref": "common.schema.json#/$defs/text"}, "dimensions": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "number"}}, "total_score": {"type": "number"}, "feedback": {"$ref": "common.schema.json#/$defs/text"}, "evaluator_flow_version": {"$ref": "common.schema.json#/$defs/text"}}, "required": ["attempt_id", "rubric_version", "dimensions", "total_score", "feedback", "evaluator_flow_version"]},
+      "outputSchema": {"type": "object", "additionalProperties": false, "properties": {"score_id": {"$ref": "common.schema.json#/$defs/id"}, "attempt_state": {"const": "evaluated"}}, "required": ["score_id", "attempt_state"]},
+      "activation_gates": ["Publish rubric dimension allowlist, score bounds and deterministic total calculation"],
+      "invariants": ["Attempt owned and evaluating", "Objective score cannot be overridden", "Validate evaluator flow version against verified context", "Validate proposed total against server calculation"]
+    },
+    {
+      "name": "user_facts.upsert", "schema_version": "1", "description": "Propose evidence-backed facts under consent policy.",
+      "endpoint": "/internal/v1/tools/user-facts:upsert", "scope": "facts:write", "idempotency": "required", "purposes": ["user_fact_extraction"],
+      "inputSchema": {"type": "object", "additionalProperties": false, "properties": {"fact_key": {"$ref": "common.schema.json#/$defs/text"}, "value": {"oneOf": [{"type": "string"}, {"type": "number"}, {"type": "boolean"}, {"type": "array", "items": {"type": "string"}}]}, "confidence": {"type": "number", "minimum": 0, "maximum": 1}, "source_message_ids": {"$ref": "common.schema.json#/$defs/ids"}, "expected_version": {"type": ["integer", "null"], "minimum": 1}, "proposed_status": {"enum": ["proposed", "confirmed"]}}, "required": ["fact_key", "value", "confidence", "source_message_ids", "expected_version", "proposed_status"]},
+      "outputSchema": {"type": "object", "additionalProperties": false, "properties": {"fact_id": {"$ref": "common.schema.json#/$defs/id"}, "revision": {"$ref": "common.schema.json#/$defs/version"}, "provenance_ref": {"$ref": "common.schema.json#/$defs/id"}, "status": {"enum": ["proposed", "confirmed"]}}, "required": ["fact_id", "revision", "provenance_ref", "status"]},
+      "activation_gates": ["Approve fact key/type catalog, consent and confidence policy", "Confirm null expected_version means create-only"],
+      "invariants": ["Confirmed requires explicit user evidence and backend policy", "Inference cannot overwrite confirmed facts", "Consent and owner provenance enforced"]
+    },
+    {
+      "name": "learning.record_assessment", "schema_version": "1", "description": "Record evidence-backed learning assessment without overwriting profile level.",
+      "endpoint": "/internal/v1/tools/learning:record-assessment", "scope": "assessment:write", "idempotency": "required", "purposes": ["learning_assessment"],
+      "inputSchema": {"type": "object", "additionalProperties": false, "properties": {"session_id": {"$ref": "common.schema.json#/$defs/id"}, "source_range": {"$ref": "common.schema.json#/$defs/range"}, "rubric_version": {"$ref": "common.schema.json#/$defs/text"}, "dimensions": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "number"}}, "evidence_message_ids": {"$ref": "common.schema.json#/$defs/ids"}, "suggested_level": {"$ref": "common.schema.json#/$defs/text"}}, "required": ["session_id", "source_range", "rubric_version", "dimensions", "evidence_message_ids", "suggested_level"]},
+      "outputSchema": {"type": "object", "additionalProperties": false, "properties": {"assessment_id": {"$ref": "common.schema.json#/$defs/id"}}, "required": ["assessment_id"]},
+      "activation_gates": ["Publish assessment dimension bounds and level enum"],
+      "invariants": ["Validate start <= end and evidence belongs to authorized range", "No direct profile overwrite", "Dedupe evidence/rubric/verified flow version"]
+    },
+    {
+      "name": "podcast.get_source_context", "schema_version": "1", "description": "Retrieve authorized source chunks and page citations for podcast runtime.",
+      "endpoint": "/internal/v1/tools/podcast:get-source-context", "scope": "podcast:read", "idempotency": "not_required", "purposes": ["podcast_runtime"],
+      "inputSchema": {"type": "object", "additionalProperties": false, "properties": {"podcast_id": {"$ref": "common.schema.json#/$defs/id"}, "source_version_id": {"$ref": "common.schema.json#/$defs/id"}, "chunk_ids": {"$ref": "common.schema.json#/$defs/ids"}, "query": {"$ref": "common.schema.json#/$defs/text"}}, "required": ["podcast_id", "source_version_id"], "oneOf": [{"required": ["chunk_ids"], "not": {"required": ["query"]}}, {"required": ["query"], "not": {"required": ["chunk_ids"]}}]},
+      "outputSchema": {"type": "object", "additionalProperties": false, "properties": {"chunks": {"type": "array", "items": {"type": "object", "additionalProperties": false, "properties": {"chunk_id": {"$ref": "common.schema.json#/$defs/id"}, "source_version_id": {"$ref": "common.schema.json#/$defs/id"}, "text": {"$ref": "common.schema.json#/$defs/text"}, "page": {"type": "integer", "minimum": 1}}, "required": ["chunk_id", "source_version_id", "text", "page"]}}}, "required": ["chunks"]},
+      "activation_gates": ["Configure chunk count, query length and context byte/token limits"],
+      "invariants": ["Owner and podcast/source version scope enforced", "No arbitrary vector filters", "Reject tombstoned sources"]
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "callcraft": {
-      "serverUrl": "https://callcraft-api.daniode.com/mcp/v1/sse?user_id=usr_01M2YE0N6ZX9K39CWWG8SVZM46"
+      "serverUrl": "https://callcraft-api.flyup.id/mcp/v1/sse?user_id=usr_01M2YE0N6ZX9K39CWWG8SVZM46"
     },
     "lf-hacktiv8_ibm": {
       "command": "uvx",
@@ -14,7 +14,7 @@
         "-H",
         "x-api-key",
         "sk-VgrDBuAr-0htOOjKUH78t5liPdxsoo0DZumkLPkh1E4",
-        "https://langflow.daniode.com/api/v1/mcp/project/8b7eb0b1-5b10-44cb-9d7e-a22f3e360b4c/streamable"
+        "https://langflow.flyup.id/api/v1/mcp/project/8b7eb0b1-5b10-44cb-9d7e-a22f3e360b4c/streamable"
       ]
     }
   }

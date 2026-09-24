@@ -1,6 +1,14 @@
 # CallCraft Tool Specification
 
-CallCraft menjadi pusat seluruh tool/function calling AI dari Langflow dan realtime worker (voice/video/podcast). Setiap tool memetakan internal domain endpoint dengan JSON schema/version, service scope, timeout, idempotency, audit dan structured errors. JSON specs disimpan di `custom_callcraft_spec/` pada fase coding. MCP untuk discovery/routing/control mengikuti deployment contract. Tidak ada generic SQL/HTTP/filter, payment, wallet debit atau credential resolver tool yang dapat dipilih LLM.
+CallCraft menjadi pusat seluruh tool/function calling AI dari Langflow dan realtime worker (voice/video/podcast). Setiap tool memetakan internal domain endpoint dengan JSON schema/version, service scope, timeout, idempotency, audit dan structured errors. Draft katalog JSON dan template integrasi tersedia di `custom_callcraft_spec/`; indeks dan gate aktivasi ada di `contract-artifacts.md`. MCP untuk discovery/routing/control mengikuti deployment contract. Tidak ada generic SQL/HTTP/filter, payment, wallet debit atau credential resolver tool yang dapat dipilih LLM.
+
+## Deployment URLs
+
+- Dashboard/dokumentasi: `https://callcraft.flyup.id`.
+- API: `https://callcraft-api.flyup.id`; backend memakai `CALLCRAFT_BASE_URL=https://callcraft-api.flyup.id/v1` dan `CALLCRAFT_TOOLCALLING_PATH=/call`.
+- Komponen Langflow memakai `CALLCRAFT_API_URL=https://callcraft-api.flyup.id`, fallback ke `CALLCRAFT_BASE_URL`, lalu default production. Normalisasi membuang suffix `/v1` sebelum menambahkan endpoint `/v1/*`.
+- MCP SSE: `https://callcraft-api.flyup.id/mcp/v1/sse`; konfigurasi agent di `.agents/mcp_config.json` menyertakan `user_id` deployment.
+- `CALLCRAFT_INTERNAL_TOOL_BASE_URL` tetap alamat internal backend Teman Bule, bukan alamat API vendor.
 
 ## Required V1 Tools
 

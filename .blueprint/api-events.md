@@ -34,6 +34,7 @@ Error envelope: `{"error":{"code":"INSUFFICIENT_TOKENS","message":"Saldo token t
 - `/internal/v1/tools/*`: CallCraft service identity + signed execution context, tool-specific scope/idempotency. Domain auth remains authoritative.
 - `POST /internal/v1/flow-data/{conversation|toefl-attempt|podcast-source|learning-content|agent-knowledge|canonical-chunks}`: scoped resource refs, no arbitrary SQL/filter.
 - `POST /internal/v1/credentials:resolve`: one-use audience-bound reference, trusted Langflow/realtime service + execution context; never public client.
+- Proposed runtime gateway: `POST /internal/v1/runtime/context:resolve` dan `POST /internal/v1/runtime/tools:execute`; service-bound execution reference, metadata tanpa key dan routing tool melalui CallCraft. Kontrak/status implementasi: `runtime-components.md`.
 - `/internal/v1/runtime/{canonical-documents|projection-results|usage-checkpoints|session-checkpoints}`: narrow trusted component persistence, not AI-callable tools. Idempotent schema/version and ownership/source-version fencing mandatory.
 
 ## Domain Events

@@ -1,0 +1,45 @@
+{
+  "artifact_version": "1.0.0",
+  "status": "draft",
+  "artifact_kind": "flow_contract_catalog_not_canvas_export",
+  "blueprint_refs": [".blueprint/langflow-flows.md", ".blueprint/astra-collections.md", ".blueprint/realtime-podcast.md"],
+  "registry": "ai_flow_registry",
+  "input_envelope": {
+    "schema_version": "2",
+    "required": ["schema_version", "request_id", "traceparent", "execution_context_token", "purpose", "resource_refs", "runtime_snapshot_id", "source_version", "input", "policy"],
+    "trusted_fields": ["execution_context_token", "purpose", "resource_refs", "runtime_snapshot_id", "source_version", "policy", "ai_configuration"],
+    "ai_configuration": "verified model ID, ephemeral credential reference and payer; no plaintext key",
+    "policy": "backend-issued tool allowlist, retrieval scope, budget and output schema"
+  },
+  "output_envelope": {
+    "required": ["schema_version", "request_id", "flow_version", "status", "result", "source_refs", "tool_execution_refs", "invocation_usage_refs", "checkpoint"],
+    "usage_authority": "trusted provider adapters only",
+    "failure": "structured failure; no invented successful tool outcome"
+  },
+  "activation_gates": ["Versioned per-flow input/output JSON Schemas and fixtures", "Actual Langflow export/import fixture", "Configured timeout and bounded payloads", "Provider usage/cancellation and secret persistence verified", "Golden evaluation dataset and immutable prompt checksum"],
+  "flows": [
+    {"purpose": "practice_interaction", "input": "text or transcript plus authorized context", "output": "tutor text, corrections, suggested reply, citations, verified tool outcomes", "cost": "plan_llm", "tools": ["vocabulary.save", "vocabulary.update_status", "vocabulary.get", "profile.update_preferences"]},
+    {"purpose": "learning_assistance", "input": "question and published learning content version", "output": "grounded answer with citations", "cost": "plan_llm", "tools": ["learning.get_progress"]},
+    {"purpose": "voice_note_transcription", "input": "authorized scanned media reference", "output": "transcript", "cost": "plan_stt", "tools": []},
+    {"purpose": "conversation_ingestion", "input": "persisted conversation source range", "output": "canonical summary and evidence reference", "cost": "platform_background", "tools": ["conversation.persist_extraction"]},
+    {"purpose": "user_fact_extraction", "input": "authorized evidence range and consent policy", "output": "fact revision and provenance references", "cost": "platform_background", "tools": ["user_facts.upsert"]},
+    {"purpose": "learning_assessment", "input": "interaction evidence and rubric version", "output": "assessment reference and suggested level", "cost": "platform_background", "tools": ["learning.record_assessment"]},
+    {"purpose": "learning_content_ingestion", "input": "published lesson version", "output": "canonical chunk references", "cost": "platform_background_if_needed", "tools": []},
+    {"purpose": "agent_knowledge_ingestion", "input": "published Elean or Willy knowledge version", "output": "canonical chunk references", "cost": "platform_background_if_needed", "tools": []},
+    {"purpose": "podcast_document_ingestion", "input": "authorized scanned PDF source version", "output": "text, page and canonical chunk references", "cost": "platform_deterministic", "tools": []},
+    {"purpose": "podcast_script_generation", "input": "canonical chunks and two persona versions", "output": "outline, Elean/Willy segments and grounded citations", "cost": "plan_llm", "tools": []},
+    {"purpose": "toefl_evaluation", "input": "locked answers and published rubric", "output": "verified subjective score and feedback reference", "cost": "plan_llm_objective_deterministic", "tools": ["toefl.record_evaluation"]},
+    {"purpose": "toefl_feedback_ingestion", "input": "committed score reference", "output": "canonical feedback chunks", "cost": "platform_background", "tools": []},
+    {"purpose": "dual_embedding_dispatch", "input": "canonical source commit", "output": "durable job references for both active embedding profiles", "cost": "platform", "tools": []},
+    {"purpose": "embedding_projection_gemini", "input": "canonical chunk and active Gemini profile references", "output": "projection references in own Astra collection", "cost": "platform_admin_gemini", "tools": []},
+    {"purpose": "embedding_projection_openai", "input": "canonical chunk and active OpenAI profile references", "output": "projection references in own Astra collection", "cost": "platform_admin_openai", "tools": []},
+    {"purpose": "session_context_preparation", "input": "authorized call or playback resource references", "output": "bounded context snapshot reference", "cost": "platform_background", "tools": [], "activation_gates": ["Approve exact read-only tool subset if needed; none exposed by default"]}
+  ],
+  "runtime_rules": [
+    "No realtime_turn flow: direct realtime worker handles voice/video/podcast turns.",
+    "SQL jobs own retries and completion; two canvas branches do not prove both projections succeeded.",
+    "Refresh context and credential references on each background attempt.",
+    "Trusted checkpoint/canonical IO uses scoped runtime API, not AI-selected tools.",
+    "TTS and embeddings are platform-funded, never VIP wallet or user BYOK."
+  ]
+}

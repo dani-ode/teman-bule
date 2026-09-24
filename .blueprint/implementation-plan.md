@@ -2,7 +2,11 @@
 
 **Tahap sekarang hanya spesifikasi/environment.** Fase berikut belum dikerjakan. Tiap fase coding wajib schema/migration dahulu, lint, strict types, meaningful unit/integration/contract tests, failure-path tests, artifact versioning dan operational docs sebelum dinyatakan selesai.
 
+Pelaksanaan mengikuti milestone dan Definition of Ready/Done di `execution-readiness.md`. Keputusan terbuka dan spike dilacak di `decision-register.md`; status approved/verified hanya diberikan dengan bukti. Gate diterapkan pada ticket/capability terkait, sehingga keputusan fase lanjutan tidak menghambat foundation yang sudah Ready.
+
 ## Phase 0 — Keputusan dan Contract Spikes
+
+Baseline draft JSON sudah tersedia dan diindeks di `contract-artifacts.md`. Gunakan sebagai input spike; keberadaan artefak tidak menutup gate vendor, rubric, batas payload atau runtime. `activation_gates` pada katalog wajib diselesaikan sebelum staged/active.
 
 | Gate | Output wajib sebelum capability aktif |
 |---|---|
@@ -19,6 +23,8 @@
 Exit: ADR/fixtures teredaksi dan approved policies. Tidak menjalankan billable provider probe tanpa controlled test budget. Tidak membuat model/price fallback agar startup tampak berhasil.
 
 ## Phase 1 — Foundation dan Auth
+
+Pecahan pekerjaan: FND-01 sampai FND-10 di `foundation-backlog.md`; layout dan aturan dependensi mengikuti `backend-layout.md`. Tutup keputusan yang dibutuhkan masing-masing ticket sebelum coding, termasuk packaging, auth/config policy, transaction/replay dan execution grant semantics.
 
 Python modular layout, dependency resolution/hash lock, config validation, structured errors/traces, Docker API/worker/realtime-worker, SQL/Redis, migrations, outbox/idempotency/audit. Implement email/password/verification/reset/refresh rotation, Google login + explicit linking. Exit: replay/CSRF/ownership tests, restart-safe email/event jobs, backup restore foundation.
 

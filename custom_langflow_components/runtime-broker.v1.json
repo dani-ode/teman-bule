@@ -1,0 +1,34 @@
+{
+  "artifact_version": "1.0.0",
+  "status": "draft",
+  "blueprint_refs": [".blueprint/runtime-components.md", ".blueprint/auth-provider-policy.md", ".blueprint/api-events.md"],
+  "implementation": "custom_langflow_components/teman_bule_runtime.py",
+  "schema_source": "Pydantic RuntimeRequest, RuntimeContext, ToolRequest, ToolResponse; export model_json_schema during backend implementation",
+  "endpoints": {
+    "context": {"method": "POST", "path": "/internal/v1/runtime/context:resolve", "request": "RuntimeRequest", "response": "RuntimeContext"},
+    "tool": {"method": "POST", "path": "/internal/v1/runtime/tools:execute", "request": "ToolRequest", "response": "ToolResponse"}
+  },
+  "authentication": "Dedicated Langflow service identity over TLS; execution_ref is not a bearer credential. Bind persisted execution grant to service identity, owner, purpose, snapshot, tool scopes, expiry and absolute deadline.",
+  "routing": "Langflow -> runtime gateway -> CallCraft -> internal domain tool; gateway is trusted transport, not an alternative AI tool executor",
+  "credential_policy": {
+    "advance_llm_stt": "Resolve user_ai_selections and encrypted user_ai_credentials through backend broker; verify owner/provider/capability/status",
+    "vip_llm_stt": "Resolve VIP_* server settings through backend runtime configuration",
+    "background": "BACKGROUND_AI_* selected admin credential",
+    "embedding": "Platform GEMINI_API_KEY or OPENAI_API_KEY including Advance query embeddings",
+    "tts": "Platform TTS_API_KEY",
+    "fallback": "forbidden",
+    "canvas_secrets": "none; credentials:resolve is available only to trusted execution adapters, never ordinary flow output"
+  },
+  "server_requirements": [
+    "Reauthorize every request; never trust client plan, payer or allowed_tools",
+    "Compile tool catalog schemas; validate arguments and successful result",
+    "Require stable idempotency key for mutations; same key and different payload is conflict",
+    "Resolve active spec/version/timeout through tool_registry",
+    "Service credential for CallCraft is separate from provider BYOK",
+    "Validate source ownership, consent, version and domain invariants",
+    "Return HTTP 200 only with valid context or tool outcome; use structured non-200 failures for transport/auth admission",
+    "Bound deadline and payload before upstream execution; record audit and trusted provider usage",
+    "Grant renewal for background attempt occurs only after snapshot and ownership checks"
+  ],
+  "activation_gates": ["Implement backend endpoints and execution grant lifecycle", "Verify CallCraft vendor binding and ephemeral credential delivery", "Verify Langflow/LFX import and component build", "Verify cancellation reaches vendor and mutation reconciliation", "Complete per-tool and per-provider integration fixtures"]
+}

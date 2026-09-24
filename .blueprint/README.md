@@ -21,6 +21,16 @@ TemanBule adalah backend pembelajaran bahasa Inggris dengan persona **Elean** da
 12. `technology.md`, `security-operations.md`, `docker-deployment.md`: stack dan operasi.
 13. `implementation-plan.md`: urutan implementasi dan release gates.
 14. `toolchain.md`: dependency locks, Make commands, CI, Docker/Compose dan entry-point contract.
+15. `contract-artifacts.md`: indeks JSON draft CallCraft/Langflow/MCP, traceability, cara validasi dan gate aktivasi.
+16. `runtime-components.md`: komponen Python Teman Bule, broker Advance/VIP, wiring, deployment dan acceptance integrasi.
+17. `execution-readiness.md`: rules operasional, milestone, Definition of Ready/Done, template ticket/evidence dan traceability.
+18. `decision-register.md`: keputusan terbuka, penanggung jawab berbasis peran, blocker per capability dan contract spikes.
+19. `backend-layout.md`: rancangan layout aplikasi, import/transaction boundaries dan kontrak sebelum handler.
+20. `foundation-backlog.md`: ticket Phase 1, dependency, acceptance/failure evidence dan verifikasi foundation.
+
+## Mulai Implementasi
+
+Baca `execution-readiness.md`, periksa keputusan yang memblokir ticket di `decision-register.md`, lalu kerjakan `foundation-backlog.md` mengikuti `backend-layout.md`. Status awal ticket adalah planned dan keputusan adalah open; tidak ada approval atau hasil integrasi yang diasumsikan. Milestone text slice adalah checkpoint integrasi, sementara scope produk penuh dan production gates tetap berlaku.
 
 ## Aturan Mengikat
 
@@ -32,7 +42,7 @@ TemanBule adalah backend pembelajaran bahasa Inggris dengan persona **Elean** da
 - Secrets tidak masuk blueprint, flow export, queue, logs, traces, atau database plaintext. `.env` lokal mempertahankan credential yang sudah diisi; `.env.example` tidak berisi secret.
 - Tidak ada fallback provider/model, harga, mock data, atau konfigurasi terselubung. Konfigurasi wajib yang kosong menggagalkan aktivasi feature terkait secara eksplisit.
 - Outbox + durable worker untuk pekerjaan penting; bukan `FastAPI BackgroundTasks`. Semua delivery diasumsikan at-least-once.
-- Migration, JSON/OpenAPI schema, flow/tool artifacts, dan integration tests dibuat pada fase coding. Dokumen ini tidak mengklaim artifact tersebut sudah ada.
+- Draft kontrak JSON tool/flow dan template integrasi sudah tersedia; lihat `contract-artifacts.md`. Migration, OpenAPI, executable flow exports dan integration fixtures dibuat dan diverifikasi pada fase implementasi.
 
 ## Status Keputusan
 

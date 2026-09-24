@@ -15,9 +15,9 @@ from typing import Any, Dict, List, Optional, Tuple
 # =============================================================================
 
 # 1. Base URL API Callcraft Production
-# Secara default mengarah langsung ke server produksi Callcraft (callcraft.daniode.com).
-# Endpoint backend API berada di: https://callcraft-api.daniode.com
-CALLCRAFT_BASE_URL: str = os.environ.get("CALLCRAFT_API_URL", "https://callcraft-api.daniode.com")
+# Secara default mengarah langsung ke server produksi Callcraft (callcraft.flyup.id).
+# Endpoint backend API berada di: https://callcraft-api.flyup.id
+CALLCRAFT_BASE_URL: str = os.environ.get("CALLCRAFT_API_URL", "https://callcraft-api.flyup.id")
 
 # 2. Endpoint Path API Callcraft
 CALLCRAFT_PROJECTS_ENDPOINT: str = "/v1/projects"
@@ -31,7 +31,7 @@ CALLCRAFT_DISCOVERY_TIMEOUT: int = 10    # Timeout penarikan list project/specs 
 # 4. Metadata Tampilan Komponen Langflow
 COMPONENT_DISPLAY_NAME: str = "Callcraft Spec"
 COMPONENT_DESCRIPTION: str = "Menerima objek Data/Message/JSON dari node sebelumnya, otomatis ekstrak file ke Base64, dan mengeksekusi AI Callcraft Spec."
-COMPONENT_DOCUMENTATION: str = "https://callcraft.daniode.com"
+COMPONENT_DOCUMENTATION: str = "https://callcraft.flyup.id"
 COMPONENT_ICON: str = "Workflow"
 
 # 5. Metadata Internal Langflow yang Diabaikan dari Body Request
@@ -44,7 +44,7 @@ IGNORED_METADATA_KEYS: set = {
 
 # 6. Base URL Server Langflow untuk Resolusi File Upload Chat
 # Digunakan untuk mengubah path file relatif dari chat menjadi URL lengkap.
-LANGFLOW_DEFAULT_BASE_URL: str = os.environ.get("LANGFLOW_BASE_URL") or os.environ.get("LANGFLOW_URL") or "https://langflow.daniode.com"
+LANGFLOW_DEFAULT_BASE_URL: str = os.environ.get("LANGFLOW_BASE_URL") or os.environ.get("LANGFLOW_URL") or "https://langflow.flyup.id"
 
 # 7. Ekstensi & Key Khusus File untuk Validasi File
 KNOWN_FILE_EXTENSIONS: set = {
@@ -82,7 +82,7 @@ def _clean_base_url(url: Optional[str]) -> str:
     Membersihkan dan menormalisasi Base URL:
     1. Menggunakan default CALLCRAFT_BASE_URL jika kosong.
     2. Menambahkan skema https:// jika protokol belum disertakan.
-    3. Mengarahkan domain frontend callcraft.daniode.com ke backend API callcraft-api.daniode.com.
+    3. Mengarahkan domain frontend callcraft.flyup.id ke backend API callcraft-api.flyup.id.
     4. Menghilangkan trailing slash '/' dan path '/v1' jika pengguna menyertakannya.
     """
     raw = (url or CALLCRAFT_BASE_URL).strip()
@@ -92,9 +92,9 @@ def _clean_base_url(url: Optional[str]) -> str:
     if not raw.startswith("http://") and not raw.startswith("https://"):
         raw = f"https://{raw}"
 
-    # Jika pengguna memasukkan domain frontend (callcraft.daniode.com), alihkan ke API server
-    if "callcraft.daniode.com" in raw and "callcraft-api.daniode.com" not in raw:
-        raw = raw.replace("callcraft.daniode.com", "callcraft-api.daniode.com")
+    # Jika pengguna memasukkan domain frontend (callcraft.flyup.id), alihkan ke API server
+    if "callcraft.flyup.id" in raw and "callcraft-api.flyup.id" not in raw:
+        raw = raw.replace("callcraft.flyup.id", "callcraft-api.flyup.id")
 
     raw = raw.rstrip("/")
     if raw.endswith("/v1"):
@@ -302,7 +302,7 @@ class CallcraftAPIComponent(Component):
         StrInput(
             name="langflow_base_url",
             display_name="Langflow Base URL",
-            info="Base URL server Langflow untuk resolusi URL lengkap file upload dari chat (misal: https://langflow.daniode.com). Default mengacu pada environment variable LANGFLOW_BASE_URL.",
+            info="Base URL server Langflow untuk resolusi URL lengkap file upload dari chat (misal: https://langflow.flyup.id). Default mengacu pada environment variable LANGFLOW_BASE_URL.",
             value=LANGFLOW_DEFAULT_BASE_URL,
             required=False,
             advanced=True,
