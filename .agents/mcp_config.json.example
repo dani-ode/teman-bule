@@ -1,0 +1,27 @@
+{
+  "mcpServers": {
+    "callcraft": {
+      "serverUrl": "https://callcraft-api.flyup.id/mcp/v1/sse",
+      "headers": {
+        "X-USER-ID": "YOUR_CALLCRAFT_USER_ID",
+        "X-CALL-PUBLIC-KEY": "YOUR_CALLCRAFT_PUBLIC_KEY",
+        "Authorization": "Bearer YOUR_CALLCRAFT_AUTH_KEY",
+        "X-PROJECT-ID": "YOUR_CALLCRAFT_PROJECT_ID"
+      }
+    },
+    "lf-hacktiv8_ibm": {
+      "command": "uvx",
+      "args": [
+        "--with",
+        "mcp<2",
+        "mcp-proxy",
+        "--transport",
+        "streamablehttp",
+        "--headers",
+        "x-api-key",
+        "YOUR_LANGFLOW_API_KEY",
+        "http://localhost:7860/api/v1/mcp/project/YOUR_LANGFLOW_PROJECT_ID/streamable"
+      ]
+    }
+  }
+}

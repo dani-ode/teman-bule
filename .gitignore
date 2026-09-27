@@ -4,6 +4,8 @@
 !.env.example
 !.env.deploy.example
 secrets/
+.agents/mcp_config.json
+!.agents/mcp_config.json.example
 
 # Python
 __pycache__/
