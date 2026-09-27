@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "callcraft": {
-      "serverUrl": "https://callcraft-api.flyup.id/mcp/v1/sse",
+      "serverUrl": "https://callcraft-api.flyup.id/mcp/v1",
       "headers": {
         "X-USER-ID": "YOUR_CALLCRAFT_USER_ID",
         "X-CALL-PUBLIC-KEY": "YOUR_CALLCRAFT_PUBLIC_KEY",
