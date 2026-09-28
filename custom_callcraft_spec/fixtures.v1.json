@@ -1,0 +1,106 @@
+{
+  "artifact_version": "1.0.0",
+  "status": "draft",
+  "artifact_kind": "tool_contract_fixtures",
+  "blueprint_refs": [".blueprint/callcraft-tools.md", "custom_callcraft_spec/tools.v1.json", "custom_callcraft_spec/common.schema.json"],
+  "notes": "Fixtures memverifikasi bentuk kontrak arguments/result per tool. Nilai ULID adalah contoh yang valid secara pola, bukan data produksi. Backend menolak field tambahan (additionalProperties: false) dan argumen bertipe salah. Fixtures tidak membuktikan eksekusi domain.",
+  "fixtures": [
+    {
+      "tool": "vocabulary.save",
+      "valid_arguments": {"lemma": "serendipity", "language": "en", "definition": "the occurrence of happy discoveries by accident", "example": "Finding this cafe was pure serendipity.", "source_message_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0E1"},
+      "invalid_arguments": [
+        {"lemma": "serendipity"},
+        {"lemma": "serendipity", "language": "en", "actor_user_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0E1"},
+        {"lemma": 42, "language": "en"}
+      ],
+      "success_result": {"resource_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0E1", "resource_version": 1}
+    },
+    {
+      "tool": "vocabulary.update_status",
+      "valid_arguments": {"entry_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0E1", "target_state": "learning", "expected_version": 1},
+      "invalid_arguments": [
+        {"entry_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0E1", "target_state": "done", "expected_version": 1},
+        {"entry_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0E1", "target_state": "learning"}
+      ],
+      "success_result": {"resource_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0E1", "resource_version": 2}
+    },
+    {
+      "tool": "vocabulary.get",
+      "valid_arguments": {"lemma": "serendipity", "language": "en"},
+      "invalid_arguments": [
+        {},
+        {"entry_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0E1", "lemma": "serendipity", "language": "en"}
+      ],
+      "success_result": {"entry_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0E1", "version": 1, "lemma": "serendipity", "language": "en", "definition": null, "example": null, "state": "new"}
+    },
+    {
+      "tool": "profile.update_preferences",
+      "valid_arguments": {"english_level": "B1", "learning_goals": ["job_interview"], "tutoring_preferences": {"correction_style": "gentle", "bilingual": true}},
+      "invalid_arguments": [
+        {},
+        {"role": "admin"},
+        {"learning_goals": []}
+      ],
+      "success_result": {"profile_version": 3}
+    },
+    {
+      "tool": "learning.get_progress",
+      "valid_arguments": {"lesson_ids": ["01J8VQ2KX3G4Y5Z6A7B8C9D0E1", "01J8VQ2KX3G4Y5Z6A7B8C9D0E2"]},
+      "invalid_arguments": [
+        {"lesson_ids": []},
+        {"lesson_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0E1", "lesson_ids": ["01J8VQ2KX3G4Y5Z6A7B8C9D0E1"]}
+      ],
+      "success_result": {"items": [{"lesson_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0E1", "content_version_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0E3", "status": "in_progress", "completion_percent": 40}]}
+    },
+    {
+      "tool": "learning.record_progress",
+      "valid_arguments": {"content_version_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0E3", "status": "completed", "completion_percent": 100, "expected_version": 2},
+      "invalid_arguments": [
+        {"content_version_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0E3", "status": "completed", "completion_percent": 120, "expected_version": 2}
+      ],
+      "success_result": {"resource_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0E4", "resource_version": 3}
+    },
+    {
+      "tool": "conversation.persist_extraction",
+      "valid_arguments": {"source_message_ids": ["01J8VQ2KX3G4Y5Z6A7B8C9D0E5"], "extraction": {"schema_version": "1", "summary": "User practiced past tense.", "evidence_message_ids": ["01J8VQ2KX3G4Y5Z6A7B8C9D0E5"]}},
+      "invalid_arguments": [
+        {"source_message_ids": ["01J8VQ2KX3G4Y5Z6A7B8C9D0E5"], "extraction": {"schema_version": "2", "summary": "x", "evidence_message_ids": ["01J8VQ2KX3G4Y5Z6A7B8C9D0E5"]}}
+      ],
+      "success_result": {"resource_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0E6", "resource_version": 1}
+    },
+    {
+      "tool": "toefl.record_evaluation",
+      "valid_arguments": {"attempt_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0E7", "rubric_version": "toefl-writing.v1", "dimensions": {"organization": 4, "grammar": 3.5}, "total_score": 3.75, "feedback": "Solid structure; article usage needs work.", "evaluator_flow_version": "toefl-eval.v1"},
+      "invalid_arguments": [
+        {"attempt_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0E7", "rubric_version": "toefl-writing.v1", "dimensions": {}, "total_score": 3.75, "feedback": "x", "evaluator_flow_version": "toefl-eval.v1"}
+      ],
+      "success_result": {"score_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0E8", "attempt_state": "evaluated"}
+    },
+    {
+      "tool": "user_facts.upsert",
+      "valid_arguments": {"fact_key": "english_level_self_report", "value": "B1", "confidence": 0.6, "source_message_ids": ["01J8VQ2KX3G4Y5Z6A7B8C9D0E5"], "expected_version": null, "proposed_status": "proposed"},
+      "invalid_arguments": [
+        {"fact_key": "english_level_self_report", "value": "B1", "confidence": 1.5, "source_message_ids": ["01J8VQ2KX3G4Y5Z6A7B8C9D0E5"], "expected_version": null, "proposed_status": "proposed"},
+        {"fact_key": "english_level_self_report", "value": "B1", "confidence": 0.6, "source_message_ids": [], "expected_version": null, "proposed_status": "proposed"}
+      ],
+      "success_result": {"fact_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0E9", "revision": 1, "provenance_ref": "01J8VQ2KX3G4Y5Z6A7B8C9D0EA", "status": "proposed"}
+    },
+    {
+      "tool": "learning.record_assessment",
+      "valid_arguments": {"session_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0EB", "source_range": {"start": 0, "end": 12}, "rubric_version": "assessment.v1", "dimensions": {"fluency": 0.7}, "evidence_message_ids": ["01J8VQ2KX3G4Y5Z6A7B8C9D0E5"], "suggested_level": "B1"},
+      "invalid_arguments": [
+        {"session_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0EB", "source_range": {"start": 0}, "rubric_version": "assessment.v1", "dimensions": {"fluency": 0.7}, "evidence_message_ids": ["01J8VQ2KX3G4Y5Z6A7B8C9D0E5"], "suggested_level": "B1"}
+      ],
+      "success_result": {"assessment_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0EC"}
+    },
+    {
+      "tool": "podcast.get_source_context",
+      "valid_arguments": {"podcast_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0ED", "source_version_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0EE", "query": "attention mechanism limitations"},
+      "invalid_arguments": [
+        {"podcast_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0ED", "source_version_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0EE"},
+        {"podcast_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0ED", "source_version_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0EE", "query": "x", "chunk_ids": ["01J8VQ2KX3G4Y5Z6A7B8C9D0EF"]}
+      ],
+      "success_result": {"chunks": [{"chunk_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0EF", "source_version_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0EE", "text": "Self-attention scales quadratically...", "page": 4}]}
+    }
+  ]
+}

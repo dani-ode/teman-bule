@@ -1,4 +1,10 @@
-"""CallCraft tool execution through the trusted Teman Bule runtime gateway."""
+"""Dispatch validated tool arguments from Langflow to the Teman Bule backend.
+
+The historical component identity is retained for saved-flow compatibility.
+This component calls the backend gateway, not CallCraft. CallCraft REST extraction
+must run upstream; its JSON does not carry trusted execution context or prove
+that a domain operation has already succeeded.
+"""
 
 from lfx.custom.custom_component.component import Component
 from lfx.io import DataInput, Output
@@ -15,7 +21,10 @@ from custom_langflow_components.teman_bule_runtime import (
 
 class TemanBuleCallcraftComponent(Component):
     display_name = "Teman Bule CallCraft"
-    description = "Execute scoped CallCraft tools using backend-owned runtime configuration."
+    description = (
+        "Dispatch tool arguments to the Teman Bule backend with a trusted execution grant. "
+        "CallCraft JSON extraction runs upstream; no CallCraft callback is used."
+    )
     name = "TemanBuleCallcraft"
     icon = "Workflow"
     inputs = [DataInput(name="tool_request", display_name="Tool Request", required=True)]

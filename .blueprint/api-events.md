@@ -31,10 +31,10 @@ Error envelope: `{"error":{"code":"INSUFFICIENT_TOKENS","message":"Saldo token t
 ## Webhooks dan Internal APIs
 
 - `POST /v1/webhooks/xendit`: callback auth + provider confirmation + durable inbox; reference/amount/currency validation; no user JWT. `POST /v1/webhooks/livekit`: vendor signature verification, dedupe, room ownership mapping. Limit body size and redact payload secrets.
-- `/internal/v1/tools/*`: CallCraft service identity + signed execution context, tool-specific scope/idempotency. Domain auth remains authoritative.
+- `/internal/v1/tools/*`: kontrak domain internal; trusted application caller membawa execution context, scope dan idempotency. Bukan callback vendor CallCraft. Domain auth remains authoritative.
 - `POST /internal/v1/flow-data/{conversation|toefl-attempt|podcast-source|learning-content|agent-knowledge|canonical-chunks}`: scoped resource refs, no arbitrary SQL/filter.
 - `POST /internal/v1/credentials:resolve`: one-use audience-bound reference, trusted Langflow/realtime service + execution context; never public client.
-- Proposed runtime gateway: `POST /internal/v1/runtime/context:resolve` dan `POST /internal/v1/runtime/tools:execute`; service-bound execution reference, metadata tanpa key dan routing tool melalui CallCraft. Kontrak/status implementasi: `runtime-components.md`.
+- Runtime gateway: `POST /internal/v1/runtime/context:resolve` dan `POST /internal/v1/runtime/tools:execute`; trusted Langflow/realtime caller membawa service-bound execution reference terpisah dari JSON CallCraft. Dispatcher mengeksekusi domain service; resolver context masih unavailable. Kontrak/status implementasi: `runtime-components.md`.
 - `/internal/v1/runtime/{canonical-documents|projection-results|usage-checkpoints|session-checkpoints}`: narrow trusted component persistence, not AI-callable tools. Idempotent schema/version and ownership/source-version fencing mandatory.
 
 ## Domain Events

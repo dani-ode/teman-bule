@@ -10,6 +10,9 @@ x-application: &application
   env_file: .env
   init: true
   read_only: true
+  extra_hosts:
+    # Langflow/vendor berjalan di host; container butuh host-gateway (Linux).
+    - "host.docker.internal:host-gateway"
   tmpfs:
     - /tmp:rw,noexec,nosuid,size=128m
   cap_drop: [ALL]

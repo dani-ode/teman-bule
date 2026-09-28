@@ -1,14 +1,14 @@
 # CallCraft Tool Specification
 
-CallCraft menjadi pusat seluruh tool/function calling AI dari Langflow dan realtime worker (voice/video/podcast). Setiap tool memetakan internal domain endpoint dengan JSON schema/version, service scope, timeout, idempotency, audit dan structured errors. Draft katalog JSON dan template integrasi tersedia di `custom_callcraft_spec/`; indeks dan gate aktivasi ada di `contract-artifacts.md`. MCP untuk discovery/routing/control mengikuti deployment contract. Tidak ada generic SQL/HTTP/filter, payment, wallet debit atau credential resolver tool yang dapat dipilih LLM.
+CallCraft menghasilkan JSON terstruktur melalui REST request/response untuk Langflow dan realtime worker. Caller memvalidasi output lalu meminta backend Teman Bule menjalankan fungsi domain; CallCraft tidak memanggil backend atau database. Endpoint internal pada tabel berikut milik dispatcher aplikasi, bukan callback vendor. MCP digunakan untuk pengelolaan spec. Tidak ada generic SQL/HTTP/filter, payment, wallet debit atau credential resolver tool yang dapat dipilih LLM.
 
 ## Deployment URLs
 
 - Dashboard/dokumentasi: `https://callcraft.flyup.id`.
 - API: `https://callcraft-api.flyup.id`; backend memakai `CALLCRAFT_BASE_URL=https://callcraft-api.flyup.id/v1` dan `CALLCRAFT_TOOLCALLING_PATH=/call`.
 - `callcraft_component.py` adalah referensi vendor generik yang memiliki fallback URL/default production; perilaku tersebut bukan kontrak runtime TemanBule. Adapter project `teman_bule_callcraft_component.py` memakai gateway terkonfigurasi eksplisit sesuai `runtime-components.md`; aktivasi tidak boleh mengandalkan fallback contoh generik.
-- MCP Server: `https://callcraft-api.flyup.id/mcp/v1` (atau SSE `https://callcraft-api.flyup.id/mcp/v1/sse`); konfigurasi agent di `.agents/mcp_config.json` (template di `.agents/mcp_config.json.example`) menyertakan kredensial deployment.
-- `CALLCRAFT_INTERNAL_TOOL_BASE_URL` tetap alamat internal backend Teman Bule, bukan alamat API vendor.
+- MCP Server (server agent `callcraft`): `https://callcraft-api.flyup.id/mcp/v1` (atau SSE `https://callcraft-api.flyup.id/mcp/v1/sse`); konfigurasi agent di `.agents/mcp_config.json` (template di `.agents/mcp_config.json.example`) menyertakan kredensial deployment.
+- Tidak ada konfigurasi callback vendor: `CALLCRAFT_INTERNAL_TOOL_BASE_URL` dihapus. Mode extraction sesuai kontrak request/response; mode HTTP vendor tidak digunakan.
 
 ## Required V1 Tools
 
@@ -28,7 +28,7 @@ CallCraft menjadi pusat seluruh tool/function calling AI dari Langflow dan realt
 
 ## Common Request Context
 
-CallCraft authenticates using service credentials and forwards a backend-issued, short-lived execution token. The internal API validates issuer, audience, expiry, flow purpose, tool name, user ID, scopes, and request correlation. `actor_user_id` is never accepted as an unconstrained tool argument.
+Caller authenticates to CallCraft using vendor credentials and receives JSON arguments. Backend execution context stays outside model-visible input/output and is supplied separately by the trusted application caller. The internal API validates service identity, grant expiry, purpose, tool allowlist, owner, scopes, request correlation and idempotency. `actor_user_id` is never accepted as an unconstrained tool argument. The envelope below is application-internal, not a vendor callback payload.
 
 ```json
 {

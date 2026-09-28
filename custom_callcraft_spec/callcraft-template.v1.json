@@ -4,9 +4,9 @@
   "slug": "${deployment.spec_slug}",
   "description": "${tool.description}",
   "requestSchema": {"$ref": "${compiled.tool.inputSchema}"},
-  "responseSchema": {"$ref": "${compiled.tool.outputSchema}"},
+  "responseSchema": {"$ref": "${compiled.tool.inputSchema}"},
   "prompts": {
-    "positivePrompt": "Gunakan kontrak tool yang dipilih dan kembalikan hanya hasil eksekusi backend yang telah tervalidasi.",
+    "positivePrompt": "Ekstrak hanya arguments fungsi sesuai schema. Backend memvalidasi dan mengeksekusi fungsi setelah menerima JSON ini.",
     "negativePrompt": "Jangan mengarang hasil, identitas pemilik, scope, atau status keberhasilan. Kegagalan backend bukan keberhasilan tool.",
     "additionalPrompt": ""
   },
@@ -17,7 +17,7 @@
       {
         "name": "${deployment.vendor_tool_name}",
         "description": "${tool.description}",
-        "agentRole": "Teman Bule scoped domain tool executor",
+        "agentRole": "Teman Bule structured function argument extractor",
         "textContext": "${compiled.tool_contract_context}",
         "includeImageContext": false
       }

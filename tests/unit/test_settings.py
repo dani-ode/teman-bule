@@ -108,3 +108,20 @@ def test_cookie_samesite_invalid(tmp_path, monkeypatch):
     with pytest.raises(ConfigurationError) as exc_info:
         settings.validate_for_api()
     assert any("AUTH_COOKIE_SAMESITE" in p for p in exc_info.value.problems)
+
+
+def test_free_advance_does_not_require_checkout(tmp_path, monkeypatch):
+    env = _base_env(tmp_path)
+    env.update(FEATURE_ADVANCE_ENABLED="true", CRYPTO_KEY_ENCRYPTION_KEY="test-key")
+    settings = _settings_from_env(env, monkeypatch)
+    assert not settings.feature_billing_enabled
+    settings.validate_for_api()
+
+
+def test_free_advance_still_requires_encryption(tmp_path, monkeypatch):
+    env = _base_env(tmp_path)
+    env["FEATURE_ADVANCE_ENABLED"] = "true"
+    settings = _settings_from_env(env, monkeypatch)
+    with pytest.raises(ConfigurationError) as exc_info:
+        settings.validate_for_api()
+    assert "CRYPTO_KEY_ENCRYPTION_KEY" in exc_info.value.problems

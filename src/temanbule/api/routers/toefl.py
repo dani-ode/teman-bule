@@ -1,12 +1,14 @@
-"""TOEFL router (Phase 4)."""
+"""TOEFL router (Phase 4): tests, attempts, submissions, scores."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from typing import Annotated
+
+from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
 from temanbule.api.deps import CurrentUser, SessionDep
-from temanbule.modules.assessments.models import ToeflAttempt
+from temanbule.modules.assessments.models import ToeflAttempt, ToeflTestVersion
 from temanbule.modules.assessments.services import ToeflService
 
 router = APIRouter(prefix="/v1/toefl", tags=["toefl"])
@@ -45,6 +47,14 @@ class ScoreResponse(BaseModel):
     review_status: str
 
 
+class TestResponse(BaseModel):
+    test_version_id: str
+    code: str
+    revision: int
+    rubric_version: str
+    publication_state: str
+
+
 def _attempt_response(attempt: ToeflAttempt) -> AttemptResponse:
     return AttemptResponse(
         attempt_id=attempt.id,
@@ -53,6 +63,37 @@ def _attempt_response(attempt: ToeflAttempt) -> AttemptResponse:
         submitted_at=attempt.submitted_at.isoformat() if attempt.submitted_at else None,
         evaluated_at=attempt.evaluated_at.isoformat() if attempt.evaluated_at else None,
     )
+
+
+@router.get("/tests", response_model=list[TestResponse])
+async def list_tests(
+    session: SessionDep,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> list[TestResponse]:
+    from sqlalchemy import select
+
+    rows = (
+        (
+            await session.execute(
+                select(ToeflTestVersion)
+                .where(ToeflTestVersion.publication_state == "published")
+                .order_by(ToeflTestVersion.code.asc(), ToeflTestVersion.revision.desc())
+                .limit(min(limit, 100))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        TestResponse(
+            test_version_id=t.id,
+            code=t.code,
+            revision=t.revision,
+            rubric_version=t.rubric_version,
+            publication_state=t.publication_state,
+        )
+        for t in rows
+    ]
 
 
 @router.post("/attempts", response_model=AttemptResponse, status_code=201)

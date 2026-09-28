@@ -19,7 +19,7 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
 from temanbule.api.deps import CurrentUser, SessionDep
-from temanbule.modules.conversations.models import ConversationSession
+from temanbule.modules.conversations.models import ConversationSession, PracticeCategory
 from temanbule.modules.conversations.services import ConversationService
 
 router = APIRouter(prefix="/v1/practice", tags=["practice"])
@@ -142,3 +142,41 @@ async def complete_session(
     )
     await session.commit()
     return _session_response(conversation)
+
+
+class CategoryResponse(BaseModel):
+    category_id: str
+    code: str
+    title: str
+    sort_order: int
+
+
+@router.get("/categories", response_model=list[CategoryResponse])
+async def list_categories(
+    session: SessionDep,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> list[CategoryResponse]:
+    """Daftar kategori practice published (public)."""
+    from sqlalchemy import select
+
+    rows = (
+        (
+            await session.execute(
+                select(PracticeCategory)
+                .where(PracticeCategory.status == "published")
+                .order_by(PracticeCategory.sort_order.asc())
+                .limit(min(limit, 100))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        CategoryResponse(
+            category_id=c.id,
+            code=c.code,
+            title=c.title,
+            sort_order=c.sort_order,
+        )
+        for c in rows
+    ]

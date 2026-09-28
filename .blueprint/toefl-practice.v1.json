@@ -1,0 +1,49 @@
+{
+  "schema_version": "toefl_practice_definition.v1",
+  "rubric_version": "toefl-practice.v1",
+  "title": "English Academic Writing Practice",
+  "official_score": false,
+  "sections": [
+    {
+      "code": "writing",
+      "time_limit_seconds": 1200,
+      "questions": [
+        {
+          "ref": "writing-1",
+          "prompt": "Some students prefer studying alone, while others prefer studying with a group. Which approach works better for you? Explain your view with specific reasons and examples.",
+          "recommended_words_min": 150,
+          "recommended_words_max": 250
+        }
+      ],
+      "dimensions": [
+        {"code": "task_fulfillment", "weight_percent": 30},
+        {"code": "organization", "weight_percent": 25},
+        {"code": "grammar", "weight_percent": 25},
+        {"code": "vocabulary", "weight_percent": 20}
+      ]
+    }
+  ],
+  "dimension_bounds": {"min": 0, "max": 4, "integer_only": true},
+  "anchors": {
+    "0": "Empty or off-topic response",
+    "1": "Very limited fulfillment; meaning frequently unclear",
+    "2": "Partial fulfillment with significant errors",
+    "3": "Clear fulfillment with minor errors",
+    "4": "Complete, clear and consistently effective response"
+  },
+  "aggregation": {
+    "formula": "sum(weight_percent * dimension_score / 4)",
+    "rounding": "ROUND_HALF_UP",
+    "min": 0,
+    "max": 100,
+    "computed_by": "backend",
+    "official_toefl_conversion": false
+  },
+  "feedback": {
+    "locale": "id",
+    "required_fields": ["rubric_version", "response_id", "scorable", "dimensions", "practice_score", "strengths", "improvements", "corrected_example", "next_exercise"],
+    "evidence_required_per_dimension": true,
+    "strengths_max": 3,
+    "improvements_max": 3
+  }
+}

@@ -1,4 +1,4 @@
-"""Learning (Home) router (Phase 4)."""
+"""Learning (Home) router (Phase 4): courses, structure, lessons, progress."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
 from temanbule.api.deps import CurrentUser, SessionDep
+from temanbule.modules.learning.models import CourseUnit, Lesson
 from temanbule.modules.learning.services import LearningService
 
 router = APIRouter(prefix="/v1", tags=["learning"])
@@ -38,6 +39,65 @@ class ProgressResponse(BaseModel):
     content_version_id: str
     status: str
     completion_percent: int
+
+
+class UnitResponse(BaseModel):
+    unit_id: str
+    title: str
+    position: int
+    lessons: list[LessonResponse]
+
+
+class LessonResponse(BaseModel):
+    lesson_id: str
+    slug: str
+    title: str
+    level: str
+    position: int
+    status: str
+
+
+class CourseStructureResponse(BaseModel):
+    course_id: str
+    slug: str
+    title: str
+    level: str
+    units: list[UnitResponse]
+
+
+@router.get("/courses/{course_id}/structure", response_model=CourseStructureResponse)
+async def get_course_structure(course_id: str, session: SessionDep) -> CourseStructureResponse:
+    service = LearningService(session)
+    course = await service.get_course(course_id)
+    units = await service.list_units(course_id)
+    unit_responses = []
+    for unit in units:
+        lessons = await service.list_lessons(unit.id)
+        unit_responses.append(
+            UnitResponse(
+                unit_id=unit.id,
+                title=unit.title,
+                position=unit.position,
+                lessons=[
+                    LessonResponse(
+                        lesson_id=l.id,
+                        slug=l.slug,
+                        title=l.title,
+                        level=l.level,
+                        position=l.position,
+                        status=l.status,
+                    )
+                    for l in lessons
+                ],
+            )
+        )
+    return CourseStructureResponse(
+        course_id=course.id,
+        slug=course.slug,
+        title=course.title,
+        level=course.level,
+        units=unit_responses,
+    )
 
 
 @router.get("/courses", response_model=list[CourseResponse])

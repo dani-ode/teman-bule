@@ -1,0 +1,28 @@
+{
+  "artifact_version": "1.0.0",
+  "status": "deployed_unverified_execution",
+  "blueprint_refs": [".blueprint/callcraft-tools.md", "custom_callcraft_spec/tools.v1.json", "custom_callcraft_spec/integration-manifest.v1.json"],
+  "deployment": {
+    "vendor": "callcraft",
+    "environment": "live",
+    "mcp_endpoint": "https://callcraft-api.flyup.id/mcp/v1",
+    "project_id_source": "CALLCRAFT_PROJECT_ID from trusted backend settings; never hardcode credentials",
+    "model": "gemini-3.6-flash",
+    "execution_mode": "extraction",
+    "deployed_at": "2026-09-28",
+    "notes": "Spec IDs are deployment data. Persist them into the tool_registry table (column callcraft_spec_id) for the matching environment through the authorized admin provisioning flow; do not treat this file as a runtime credential or registry substitute. Extraction proves only that arguments were structured; the backend dispatcher owns domain mutation, authorization, idempotency, and truthful status."
+  },
+  "tools": [
+    {"name": "vocabulary.save", "callcraft_spec_id": "spc_01M39FGB99NQD42SAB84XDMDXE", "scope": "vocabulary:write", "idempotency": "required"},
+    {"name": "vocabulary.update_status", "callcraft_spec_id": "spc_01M3HV49897SGPK5KWS16YQRWW", "scope": "vocabulary:write", "idempotency": "required"},
+    {"name": "vocabulary.get", "callcraft_spec_id": "spc_01M3HV4AN36DYY8G5KW9S705EG", "scope": "vocabulary:read", "idempotency": "not_required"},
+    {"name": "profile.update_preferences", "callcraft_spec_id": "spc_01M3M05XNVXJ8PDDRWENC4KY2F", "scope": "profile:write", "idempotency": "required"},
+    {"name": "learning.get_progress", "callcraft_spec_id": "spc_01M3M05YEQR76WDXNJPQVF4FYN", "scope": "learning:read", "idempotency": "not_required"},
+    {"name": "learning.record_progress", "callcraft_spec_id": "spc_01M3M05Z6XND4AAVGPT0ZDQWRW", "scope": "learning:write", "idempotency": "required"},
+    {"name": "conversation.persist_extraction", "callcraft_spec_id": "spc_01M3M05ZXHNAQN0CDDAMRK834J", "scope": "ingestion:write", "idempotency": "required"},
+    {"name": "toefl.record_evaluation", "callcraft_spec_id": "spc_01M3M060KR8K2RJTC66YHFTSFR", "scope": "toefl:evaluate", "idempotency": "required"},
+    {"name": "user_facts.upsert", "callcraft_spec_id": "spc_01M3M0611MCTTX9V2QJBDNQZ5M", "scope": "facts:write", "idempotency": "required"},
+    {"name": "learning.record_assessment", "callcraft_spec_id": "spc_01M3M061M46BX8E0JDS96YA39S", "scope": "assessment:write", "idempotency": "required"},
+    {"name": "podcast.get_source_context", "callcraft_spec_id": "spc_01M3M062MR0Q7X3RH69Q36B5GB", "scope": "podcast:read", "idempotency": "not_required"}
+  ]
+}

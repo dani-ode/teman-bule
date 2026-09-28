@@ -1,26 +1,42 @@
-"""BYOK credentials router (Phase 2): register, select, revoke.
-
-API key diterima sekali, dienkripsi sebelum persist, tidak pernah dikembalikan.
-Verifier konkret menunggu DEC-08; endpoint gagal eksplisit bila belum terpasang.
-"""
+"""BYOK credentials router (Phase 2): register, select, revoke, list providers/models."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from typing import Annotated
+
+from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel, Field, SecretStr
+from sqlalchemy import select
 
 from temanbule.api.deps import CurrentUser, SessionDep, SettingsDep
 from temanbule.modules.catalog.byok import ByokCredentialService
+from temanbule.modules.catalog.models import AiModelConfiguration, ProviderCatalog
 from temanbule.platform.crypto import FieldCipher
 from temanbule.platform.errors import FeatureUnavailableError
 
-router = APIRouter(prefix="/v1/me/ai-credentials", tags=["byok"])
+router = APIRouter(prefix="/v1", tags=["byok"])
 
 
 class RegisterCredentialRequest(BaseModel):
     provider_id: str = Field(min_length=1, max_length=26)
     api_key: SecretStr = Field(min_length=8)
     base_url: str | None = Field(default=None, max_length=500)
+
+
+class ProviderResponse(BaseModel):
+    provider_id: str
+    code: str
+    status: str
+    canonical_base_url: str | None
+
+
+class ModelResponse(BaseModel):
+    model_id: str
+    provider_id: str
+    identifier: str
+    revision: int
+    capabilities: str
+    status: str
 
 
 class CredentialResponse(BaseModel):
@@ -53,6 +69,68 @@ def _build_service(
         )
     cipher = FieldCipher(settings.crypto_key_encryption_key)
     return ByokCredentialService(session, cipher, verifier)
+
+
+@router.get("/providers", response_model=list[ProviderResponse])
+async def list_providers(
+    session: SessionDep,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> list[ProviderResponse]:
+    rows = (
+        (
+            await session.execute(
+                select(ProviderCatalog)
+                .where(ProviderCatalog.status == "active")
+                .order_by(ProviderCatalog.code.asc())
+                .limit(min(limit, 100))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        ProviderResponse(
+            provider_id=p.id,
+            code=p.code,
+            status=p.status,
+            canonical_base_url=p.canonical_base_url,
+        )
+        for p in rows
+    ]
+
+
+@router.get("/models", response_model=list[ModelResponse])
+async def list_models(
+    session: SessionDep,
+    provider_id: Annotated[str | None, Query()] = None,
+    capability: Annotated[str | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> list[ModelResponse]:
+    stmt = select(AiModelConfiguration).where(AiModelConfiguration.status == "active")
+    if provider_id:
+        stmt = stmt.where(AiModelConfiguration.provider_id == provider_id)
+    if capability:
+        stmt = stmt.where(AiModelConfiguration.capabilities.contains(capability))
+    rows = (
+        (
+            await session.execute(
+                stmt.order_by(AiModelConfiguration.identifier.asc()).limit(min(limit, 100))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        ModelResponse(
+            model_id=m.id,
+            provider_id=m.provider_id,
+            identifier=m.identifier,
+            revision=m.revision,
+            capabilities=m.capabilities,
+            status=m.status,
+        )
+        for m in rows
+    ]
 
 
 @router.post("", response_model=CredentialResponse, status_code=201)

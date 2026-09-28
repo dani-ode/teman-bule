@@ -1,4 +1,4 @@
-"""Tool execution service (Phase 3): jalur /internal/v1/tools/* via CallCraft.
+"""Backend domain execution for trusted caller-supplied tool arguments.
 
 Kontrak (callcraft-tools.md, runtime-components.md):
 - actor_user_id TIDAK pernah diterima sebagai argumen bebas; owner berasal
@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from temanbule.modules.ai_runtime.grants import ExecutionGrantService
 from temanbule.modules.ai_runtime.models import ExecutionGrant
+from temanbule.modules.ai_runtime.tool_schemas import TOOL_VALIDATORS
 from temanbule.modules.reliability.models import ToolExecution
 from temanbule.platform.errors import (
     AppError,
@@ -39,6 +40,16 @@ PURPOSE_TOOL_ALLOWLIST: dict[str, set[str]] = {
         "vocabulary.update_status",
         "vocabulary.get",
         "profile.update_preferences",
+    },
+    "direct_realtime_call": {
+        "vocabulary.save",
+        "vocabulary.update_status",
+        "vocabulary.get",
+        "learning.get_progress",
+    },
+    "podcast_runtime": {
+        "podcast.get_source_context",
+        "vocabulary.save",
     },
     "conversation_ingestion": {"conversation.persist_extraction"},
     "user_fact_extraction": {"user_facts.upsert"},
@@ -114,6 +125,11 @@ class ToolExecutionService:
         if grant.owner_user_id is None:
             raise ValidationError("Tool user-scoped memerlukan owner pada grant.")
         owner_user_id = grant.owner_user_id
+
+        # Validasi argumen ketat sesuai katalog sebelum dedupe/eksekusi.
+        validator = TOOL_VALIDATORS.get(tool_name)
+        if validator is not None:
+            validator(arguments)
 
         # Mutasi WAJIB idempotency key (callcraft-tools.md); read tidak.
         is_read_tool = tool_name in {

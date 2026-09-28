@@ -18,14 +18,15 @@
     "name_mapping": "replace each dot with underscore; verify uniqueness before deployment",
     "inputSchema": "compiled tool.inputSchema only; trusted context injected server-side",
     "outputSchema": "compiled common response envelope narrowed to tool.outputSchema on success",
-    "routing": "MCP -> CallCraft -> scoped internal backend endpoint",
+    "routing": "Caller -> CallCraft REST -> structured JSON back to caller -> backend domain dispatcher; MCP manages specs",
     "discovery": "only active registry tools intersected with verified purpose, scopes and resource policy",
     "failure": "map domain failed status to MCP error semantics supported by deployed SDK; preserve structured error",
-    "activation_gates": ["transport and SDK schema support", "cancel/deadline propagation", "backend execution binding", "service auth and execution context propagation"]
+    "activation_gates": ["REST response schema validation", "cancel/deadline propagation", "caller-to-backend dispatch", "backend service auth and execution grant validation"]
   },
   "unverified_vendor_capabilities": [
-    "The supplied export describes AI extraction tools, but does not demonstrate HTTP backend binding.",
-    "Do not invent vendor endpoint/auth/binding fields; capture a real redacted export and execution fixture in Phase 0.",
-    "Do not forward execution tokens through prompts or LLM-visible arguments."
+    "Extraction mode is intentional; validate actual response envelope before caller-side domain dispatch.",
+    "Do not forward execution tokens through prompts or LLM-visible arguments.",
+    "Vocabulary extraction must return lemma/language and optional definition/example, not fabricated persisted resource IDs.",
+    "Only backend domain completion may return resource_id/resource_version or claim persistence succeeded."
   ]
 }

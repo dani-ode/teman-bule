@@ -30,11 +30,11 @@ Client -> FastAPI -> PostgreSQL + outbox -> Redis -> worker -> Langflow workflow
              |                           |                  |-> Gemini embedding (admin)
              |-> Xendit <-> webhook       |                  |-> OpenAI embedding (admin)
              |-> credential broker       |                  +-> Astra projections
-             +-> Langflow chat/Learn -> CallCraft -> internal domain API
+             +-> Langflow chat/Learn -> CallCraft REST -> JSON -> backend dispatcher
 
 Client <-> LiveKit <-> realtime worker -> STT -> LLM -> ElevenLabs
                               |            (direct streaming, no Langflow turn)
-                              |-> CallCraft -> internal domain API
+                              |-> CallCraft REST -> JSON -> backend dispatcher
                               +-> persisted turns/usage/outbox -> background Langflow
 ```
 
@@ -46,7 +46,7 @@ Client <-> LiveKit <-> realtime worker -> STT -> LLM -> ElevenLabs
 | Call / video / interupsi podcast | Client ↔ LiveKit ↔ realtime worker → provider langsung | Modul backend menyimpan transcript/checkpoint; worker mengatur media |
 | Ingestion / facts / assessment / embedding | PostgreSQL + outbox → durable worker → Langflow HTTP API | SQL job menentukan retry, dedupe dan completion |
 | Discovery / pemanggilan flow oleh agent internal | Agent → Langflow MCP → published flow | Backend tetap memvalidasi execution context dan scope |
-| Function call pilihan AI | Langflow atau realtime worker → CallCraft → domain API | Modul pemilik menegakkan invariant dan transaksi |
+| Function call pilihan AI | Caller → CallCraft REST → JSON kembali → backend dispatcher | Modul pemilik menegakkan invariant dan transaksi; tanpa callback vendor |
 
 Pesan asli dan transcript disimpan oleh backend/realtime worker **sebelum** pengolahan background. Langflow menghasilkan data turunan (summary, facts, assessment, chunks, vectors) dan menyimpan hasil melalui scoped runtime API/adapter; kegagalan ingestion tidak menghilangkan sumber percakapan. Astra hanya projection dari sumber canonical PostgreSQL.
 

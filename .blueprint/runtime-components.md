@@ -2,28 +2,47 @@
 
 ## Status dan keputusan
 
-Tersedia dua adapter Python Langflow dan satu async runtime client. Backend runtime gateway **belum diimplementasikan**. Komponen adalah persiapan integrasi yang dapat diuji lokal, bukan capability aktif. Contoh generik `callcraft_component.py` tetap menjadi referensi vendor.
+Tersedia dua adapter Python Langflow dan satu async runtime client. Backend memiliki dispatcher `tools:execute`; resolver `context:resolve` masih mengembalikan unavailable sampai snapshot broker terhubung. Wiring end-to-end extraction CallCraft dan flow Langflow belum terverifikasi. Contoh generik `callcraft_component.py` tetap menjadi referensi vendor.
 
 | File | Tanggung jawab |
 |---|---|
 | `custom_langflow_components/teman_bule_runtime.py` | Typed request/response, konfigurasi eksplisit, HTTPS async client, bounded response, error sanitization |
 | `custom_langflow_components/teman_bule_runtime_context_component.py` | Resolusi metadata runtime terotorisasi |
-| `custom_langflow_components/teman_bule_callcraft_component.py` | Eksekusi tool melalui runtime gateway dan CallCraft |
+| `custom_langflow_components/teman_bule_callcraft_component.py` | Langflow memanggil dispatcher backend; nama historis dipertahankan, extraction CallCraft berjalan upstream |
 | `custom_langflow_components/runtime-broker.v1.json` | Endpoint, credential policy, server obligations dan activation gates |
 
 ## Boundary dan wiring
 
-Backend membuat execution grant berumur pendek dan mengirim `execution_ref` (ULID reference, bukan token) bersama request ID. Grant terikat service identity, owner, snapshot, purpose, scopes dan deadline. Penyimpanan, revocation dan replay semantics grant harus diputuskan pada foundation. Ini mapping transport dari execution context blueprint; backend tetap mengirim signed execution context ke domain tool lewat CallCraft setelah vendor spike.
+Backend membuat execution grant berumur pendek dan mengirim `execution_ref` (ULID reference, bukan token) bersama request ID. Grant terikat service identity, owner, snapshot, purpose, scopes dan deadline. Trusted caller membawa grant langsung ke gateway backend, terpisah dari arguments/output CallCraft. Execution context tidak diteruskan melalui CallCraft atau prompt.
 
 Adapter Python sekarang hanya mendukung context `plan=vip|advance`; ini cukup untuk draft jalur user, belum untuk admin/shared ingestion tanpa plan. Job platform private mempertahankan owner scope namun payer tetap platform. Sebelum mengaktifkan shared ingestion, version-kan RuntimeContext untuk service principal dan plan nullable, selaraskan schema/tests; jangan membuat user VIP sintetis. Referensi schema target ada di `postgresql-schema.md`.
 
 `RuntimeRequest`: `schema_version: "1"`, `request_id`, `execution_ref`. Node context mengembalikan metadata plan/capability/payer/model dan allowlist, tanpa key atau credential reference yang bisa di-redeem canvas. Input tool menggunakan tiga field request tersebut ditambah `tool_name`, `arguments` dan `idempotency_key` untuk mutasi. Backend/adapter membangun input ini; LLM hanya memilih tool dan argumennya. Output context bukan langsung input tool: builder mengambil request ID/reference dan menambahkan argumen; jangan meneruskan plan/payer sebagai klaim otorisasi.
 
-Jalur eksekusi: **Langflow → runtime gateway → CallCraft → domain API**. Gateway menyelesaikan konfigurasi, registry dan autentikasi; seluruh AI-selected domain tools tetap melalui CallCraft. Gateway tidak langsung menyimpan vocabulary sebagai pengganti CallCraft.
+Jalur eksekusi: **caller → CallCraft REST → JSON kembali ke caller → runtime gateway → domain service**. CallCraft menghasilkan arguments; gateway memvalidasi dan mengeksekusi fungsi lokal dengan grant/idempotency. Keberhasilan extraction bukan keberhasilan persistence. CallCraft tidak membutuhkan callback ke backend. Wiring extraction ke dispatcher tetap perlu diuji; endpoint tools:execute sendiri adalah dispatcher backend, bukan bukti invocation vendor.
 
 Credential Advance berasal dari PostgreSQL terenkripsi; VIP berasal dari `VIP_*` settings backend. Background/embedding/TTS mengikuti credential platform pada `auth-provider-policy.md`. Resolusi key terjadi di trusted adapter/broker, bukan melalui akses database dari Langflow dan bukan field UI komponen. Tidak ada fallback antar payer/provider.
 
 ## Konfigurasi deployment Langflow
+
+### Callback Langflow dan batas CallCraft
+
+Langflow dapat memanggil runtime gateway atau mengirim callback hasil/status ke
+backend melalui komponen HTTP tepercaya. Jalur ini memerlukan alamat backend
+yang dapat dijangkau dari deployment Langflow, autentikasi service Langflow,
+execution grant bila melakukan operasi domain, correlation ID dan deduplikasi.
+Payload callback tidak menentukan owner, harga, debit atau status sukses transaksi;
+backend tetap memvalidasi dan menyimpan hasil secara otoritatif.
+
+`LANGFLOW_INTERNAL_RUNTIME_BASE_URL` dan `TEMAN_BULE_RUNTIME_URL` tetap relevan
+untuk jalur Langflow → backend. Penghapusan callback CallCraft tidak menghapusnya.
+Endpoint `/api/v1/webhook/{flow_id}` adalah arah backend/external → Langflow untuk
+memicu flow, berbeda dari callback Langflow → backend. Dukungan callback khusus
+hasil job harus diimplementasikan dan diverifikasi sebelum dianggap aktif.
+
+CallCraft murni tool/function calling: REST request → structured JSON response.
+CallCraft tidak mengirim callback, mengakses database atau menjalankan domain
+mutation Teman Bule. MCP CallCraft hanya untuk pengelolaan spec/tool.
 
 Semua wajib, tanpa default tersembunyi; inject ke proses Langflow melalui deployment secret/config:
 

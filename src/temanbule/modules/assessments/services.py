@@ -24,6 +24,7 @@ from temanbule.modules.assessments.models import (
     ToeflSubmission,
     ToeflTestVersion,
 )
+from temanbule.modules.assessments.rubric import RUBRIC_VERSION, practice_score
 from temanbule.modules.catalog.services import RuntimeSnapshotBuilder
 from temanbule.platform.errors import ConflictError, NotFoundError, ValidationError
 from temanbule.platform.security import new_ulid
@@ -203,6 +204,68 @@ class ToeflService:
 
     async def get_attempt(self, *, user_id: str, attempt_id: str) -> ToeflAttempt:
         return await self._owned_attempt(user_id, attempt_id)
+
+    async def record_writing_evaluation(
+        self, *, user_id: str, attempt_id: str, question_ref: str,
+        dimensions: dict[str, int], evidence: dict[str, str], flow_version: str,
+    ) -> ToeflScore:
+        """Persist a trusted evaluator result against the pinned writing rubric.
+
+        Caller must be an authorized backend evaluator, never a public score DTO.
+        Evidence must quote the submitted answer; totals are computed here.
+        """
+        attempt = await self._owned_attempt(user_id, attempt_id, for_update=True)
+        test = await self.session.get(ToeflTestVersion, attempt.test_version_id)
+        if test is None or test.rubric_version != RUBRIC_VERSION:
+            raise ValidationError("Rubric attempt tidak sesuai.")
+        try:
+            definition = json.loads(test.definition)
+            sections = definition["sections"]
+            valid_question = (
+                len(sections) == 1 and sections[0]["code"] == "writing"
+                and len(sections[0]["questions"]) == 1
+                and sections[0]["questions"][0]["ref"] == question_ref
+            )
+        except (ValueError, KeyError, TypeError):
+            valid_question = False
+        if not valid_question or not flow_version.strip():
+            raise ValidationError("Definisi tes atau versi evaluator tidak valid.")
+        total = practice_score(section="writing", dimensions=dimensions)
+        submission = (await self.session.execute(select(ToeflSubmission).where(
+            ToeflSubmission.attempt_id == attempt_id,
+            ToeflSubmission.question_ref == question_ref,
+            ToeflSubmission.section == "writing",
+        ))).scalar_one_or_none()
+        if submission is None or not (submission.answer or "").strip():
+            raise ValidationError("Jawaban writing tidak tersedia untuk evaluasi.")
+        if set(evidence) != set(dimensions) or any(
+            not isinstance(quote, str) or not quote.strip()
+            or quote not in (submission.answer or "") for quote in evidence.values()
+        ):
+            raise ValidationError("Evidence wajib kutipan jawaban untuk setiap dimensi.")
+        serialized = json.dumps(dimensions, sort_keys=True)
+        feedback = json.dumps({"evidence": evidence, "official_score": False}, sort_keys=True)
+        existing = (await self.session.execute(select(ToeflScore).where(
+            ToeflScore.attempt_id == attempt_id,
+            ToeflScore.rubric_version == RUBRIC_VERSION,
+        ))).scalar_one_or_none()
+        if existing is not None:
+            if (existing.subjective_dimensions != serialized or existing.feedback != feedback
+                    or existing.flow_version != flow_version):
+                raise ConflictError("Hasil evaluasi berbeda dari skor immutable yang tersimpan.")
+            return existing
+        if attempt.state not in (STATE_SUBMITTED, STATE_EVALUATING):
+            raise ConflictError("Attempt tidak sedang menunggu evaluasi.")
+        score = ToeflScore(
+            id=new_ulid(), attempt_id=attempt_id, rubric_version=RUBRIC_VERSION,
+            objective_dimensions="{}", subjective_dimensions=serialized,
+            total_score=total, feedback=feedback, flow_version=flow_version,
+        )
+        self.session.add(score)
+        attempt.state = STATE_EVALUATED
+        attempt.evaluated_at = datetime.now(UTC)
+        await self.session.flush()
+        return score
 
     async def get_score(self, *, user_id: str, attempt_id: str) -> ToeflScore:
         await self._owned_attempt(user_id, attempt_id)

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from temanbule.modules.learning.models import (
     Course,
+    CourseUnit,
     LearningContentVersion,
     LearningProgress,
     Lesson,
@@ -33,6 +34,44 @@ class LearningService:
                     .where(Course.status == "published")
                     .order_by(Course.title.asc())
                     .limit(min(limit, 100))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return list(rows)
+
+    async def get_course(self, course_id: str) -> Course:
+        course = (
+            await self.session.execute(
+                select(Course).where(Course.id == course_id, Course.status == "published")
+            )
+        ).scalar_one_or_none()
+        if course is None:
+            raise NotFoundError("Course tidak ditemukan.")
+        return course
+
+    async def list_units(self, course_id: str) -> list[CourseUnit]:
+        rows = (
+            (
+                await self.session.execute(
+                    select(CourseUnit)
+                    .where(CourseUnit.course_id == course_id)
+                    .order_by(CourseUnit.position.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return list(rows)
+
+    async def list_lessons(self, unit_id: str) -> list[Lesson]:
+        rows = (
+            (
+                await self.session.execute(
+                    select(Lesson)
+                    .where(Lesson.unit_id == unit_id, Lesson.status == "published")
+                    .order_by(Lesson.position.asc())
                 )
             )
             .scalars()

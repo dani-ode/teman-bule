@@ -445,6 +445,58 @@ class PodcastService:
             raise NotFoundError("Podcast tidak ditemukan.")
         return podcast
 
+    async def get_podcast(self, *, user_id: str, podcast_id: str) -> Podcast:
+        return await self._owned_podcast(user_id, podcast_id)
+
+    async def update_title(
+        self, *, user_id: str, podcast_id: str, title: str
+    ) -> Podcast:
+        podcast = await self._owned_podcast(user_id, podcast_id, for_update=True)
+        if not title.strip():
+            raise ValidationError("Title kosong.")
+        podcast.title = title.strip()
+        await self.session.flush()
+        return podcast
+
+    async def delete_podcast(self, *, user_id: str, podcast_id: str) -> None:
+        podcast = await self._owned_podcast(user_id, podcast_id, for_update=True)
+        await self.session.delete(podcast)
+        await self.session.flush()
+
+    async def list_segments(
+        self, *, user_id: str, podcast_id: str
+    ) -> list[PodcastSegment]:
+        await self._owned_podcast(user_id, podcast_id)
+        rows = (
+            (
+                await self.session.execute(
+                    select(PodcastSegment)
+                    .join(
+                        PodcastScriptVersion,
+                        PodcastSegment.script_version_id == PodcastScriptVersion.id,
+                    )
+                    .where(PodcastScriptVersion.podcast_id == podcast_id)
+                    .order_by(PodcastSegment.position.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return list(rows)
+
+    async def get_playback(
+        self, *, user_id: str, podcast_id: str, playback_id: str
+    ) -> PodcastPlayback:
+        await self._owned_podcast(user_id, podcast_id)
+        playback = (
+            await self.session.execute(
+                select(PodcastPlayback).where(PodcastPlayback.id == playback_id)
+            )
+        ).scalar_one_or_none()
+        if playback is None or playback.podcast_id != podcast_id:
+            raise NotFoundError("Playback tidak ditemukan.")
+        return playback
+
     async def _owned_playback(
         self, user_id: str, playback_id: str, *, for_update: bool = False
     ) -> PodcastPlayback:

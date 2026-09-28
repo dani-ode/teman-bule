@@ -1,24 +1,37 @@
-"""Billing router: wallet balance + top-up orders (Phase 2).
-
-Nominal/currency/token selalu dari DB package version — tidak dari client.
-Xendit adapter konkret menunggu DEC-07/SPK-03; endpoint gagal eksplisit
-(FEATURE_UNAVAILABLE) bila adapter belum terpasang, tanpa fallback.
-"""
+"""Billing router: packages, wallet, top-up orders, ledger (Phase 2)."""
 
 from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Header, Request
+from fastapi import APIRouter, Header, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from temanbule.api.deps import CurrentUser, SessionDep
-from temanbule.modules.billing.models import Wallet
+from temanbule.modules.billing.models import TokenPackageVersion, Wallet, LedgerJournal, LedgerEntry
 from temanbule.modules.billing.payments import PaymentService, XenditCheckoutPort
 from temanbule.platform.errors import FeatureUnavailableError, NotFoundError, ValidationError
 
 router = APIRouter(prefix="/v1/billing", tags=["billing"])
+
+
+class PackageResponse(BaseModel):
+    package_version_id: str
+    package_code: str
+    revision: int
+    currency: str
+    amount_minor: int
+    token_units: int
+    display_scale: int
+
+
+class LedgerEntryResponse(BaseModel):
+    journal_id: str
+    kind: str
+    signed_units: int
+    asset: str
+    created_at: str
 
 
 class WalletResponse(BaseModel):
@@ -51,6 +64,37 @@ def _get_checkout_adapter(request: Request) -> XenditCheckoutPort:
     return adapter
 
 
+@router.get("/packages", response_model=list[PackageResponse])
+async def list_packages(
+    session: SessionDep,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> list[PackageResponse]:
+    rows = (
+        (
+            await session.execute(
+                select(TokenPackageVersion)
+                .where(TokenPackageVersion.status == "published")
+                .order_by(TokenPackageVersion.amount_minor.asc())
+                .limit(min(limit, 100))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        PackageResponse(
+            package_version_id=p.id,
+            package_code=p.package_code,
+            revision=p.revision,
+            currency=p.currency,
+            amount_minor=p.amount_minor,
+            token_units=p.token_units,
+            display_scale=p.display_scale,
+        )
+        for p in rows
+    ]
+
+
 @router.get("/wallet", response_model=WalletResponse)
 async def get_wallet(current_user: CurrentUser, session: SessionDep) -> WalletResponse:
     wallet = (
@@ -64,6 +108,49 @@ async def get_wallet(current_user: CurrentUser, session: SessionDep) -> WalletRe
         held_units=wallet.held_units,
         version=wallet.version,
     )
+
+
+@router.get("/wallet/ledger", response_model=list[LedgerEntryResponse])
+async def get_wallet_ledger(
+    current_user: CurrentUser,
+    session: SessionDep,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> list[LedgerEntryResponse]:
+    wallet = (
+        await session.execute(select(Wallet).where(Wallet.user_id == current_user.id))
+    ).scalar_one_or_none()
+    if wallet is None:
+        raise NotFoundError("Wallet belum ada.")
+    rows = (
+        (
+            await session.execute(
+                select(LedgerEntry, LedgerJournal)
+                .join(LedgerJournal, LedgerEntry.journal_id == LedgerJournal.id)
+                .where(LedgerEntry.account_id.in_(
+                    select(LedgerEntry.account_id).where(
+                        LedgerEntry.account_id.in_(
+                            select(LedgerEntry.account_id).where(
+                                LedgerEntry.account_id == wallet.id
+                            )
+                        )
+                    )
+                ))
+                .order_by(LedgerEntry.created_at.desc())
+                .limit(min(limit, 200))
+            )
+        )
+        .all()
+    )
+    return [
+        LedgerEntryResponse(
+            journal_id=j.id,
+            kind=j.kind,
+            signed_units=e.signed_units,
+            asset=e.asset,
+            created_at=e.created_at.isoformat(),
+        )
+        for e, j in rows
+    ]
 
 
 @router.post("/topup", response_model=TopupOrderResponse, status_code=201)

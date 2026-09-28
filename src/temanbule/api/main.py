@@ -28,6 +28,13 @@ from temanbule.api.routers import practice as practice_router
 from temanbule.api.routers import profile as profile_router
 from temanbule.api.routers import toefl as toefl_router
 from temanbule.api.routers import vocabulary as vocabulary_router
+from temanbule.modules.billing.xendit_adapter import build_xendit_checkout
+from temanbule.modules.calls.livekit_adapter import build_livekit_token_factory
+from temanbule.modules.catalog.credential_verifier import build_credential_verifier
+from temanbule.modules.media.s3_adapter import (
+    build_download_url_factory,
+    build_upload_url_factory,
+)
 from temanbule.platform.db.engine import create_engine, create_session_factory
 from temanbule.platform.errors import AppError
 from temanbule.platform.logging import configure_logging, get_request_id
@@ -73,6 +80,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = settings
+
+    # Adapter konkret (DEC-08/DEC-14/DEC-15); dipasang kondisional per feature
+    # flag — router gagal eksplisit bila adapter belum terpasang.
+    if settings.feature_advance_enabled:
+        app.state.credential_verifier = build_credential_verifier(settings)
+    if settings.feature_media_enabled:
+        app.state.media_upload_url_factory = build_upload_url_factory(settings)
+        app.state.media_download_url_factory = build_download_url_factory(settings)
+    if settings.feature_realtime_call_enabled:
+        app.state.livekit_token_factory = build_livekit_token_factory(settings)
+    if settings.feature_billing_enabled:
+        app.state.xendit_checkout = build_xendit_checkout(settings)
 
     # Middleware
     app.add_middleware(RequestIdMiddleware)

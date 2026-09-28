@@ -2,7 +2,7 @@
 
 ## Definisi dan Kebijakan Biaya
 
-Token aplikasi adalah unit saldo internal, berbeda dari token input/output provider. Tidak ada billing bulanan/tahunan atau expiry saldo otomatis pada baseline. Paket top-up, mata uang, expiry pembayaran, refund policy, dan rate card adalah data versioned DB; nilai komersial wajib disahkan sebelum aktivasi.
+Token aplikasi adalah unit saldo internal, berbeda dari token input/output provider. Arahan CTO: Rp1 = 1 token aplikasi, display scale 1. Tidak ada billing bulanan/tahunan atau expiry saldo otomatis. Baseline paket Rp25.000/50.000/100.000/250.000 serta kebijakan rate/refund ada di `launch-decisions.md` DEC-06. Paket dan rate card tetap data versioned DB yang perlu dipublish sebelum aktivasi.
 
 | Pekerjaan | VIP | Advance |
 |---|---|---|
@@ -14,7 +14,7 @@ Token aplikasi adalah unit saldo internal, berbeda dari token input/output provi
 | Background fakta/memori/assessment longitudinal, indexing | Platform background model/key, **zero wallet debit** | Platform background model/key |
 | Playback audio cache tanpa invokasi AI baru | Tidak ditagih ulang untuk generation sebelumnya | Tidak ada debit |
 
-TTS/embedding tetap diukur pada cost observability dengan `payer=platform`; bukan komponen tersembunyi rate card pengguna. Batas penggunaan adil/kapasitas berlaku pada kedua plan. Keputusan biaya Advance tambahan belum ada; implementasi tidak boleh menciptakan subscription atau debit otomatis.
+TTS/embedding tetap diukur pada cost observability dengan `payer=platform`; bukan komponen tersembunyi rate card pengguna. Batas penggunaan adil/kapasitas berlaku pada kedua plan. Advance gratis biaya platform dan tanpa minimum top-up; checkout Xendit tidak menjadi prasyarat Advance. Saat kuota BYOK habis, hentikan invocation tanpa fallback key admin atau debit VIP.
 
 ## Rate Card
 

@@ -9,6 +9,10 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+# Registrasi seluruh model sebelum engine/session dipakai agar foreign key
+# lintas modul (mis. FK ke ``users``) ter-resolve saat flush. Lihat modul
+# models_registry untuk penjelasan. Import untuk efek samping.
+import temanbule.modules.models_registry  # noqa: F401
 from temanbule.platform.settings import ConfigurationError, Settings
 
 

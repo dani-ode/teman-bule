@@ -1,6 +1,6 @@
 # Decision Register
 
-Status awal seluruh baris: **open**. Peran di bawah adalah tanggung jawab yang perlu ditunjuk, bukan tanda approval. Tidak ada harga, model, batas, SLA atau kontrak vendor yang dianggap final melalui dokumen ini.
+Status awal seluruh baris: **open**. Update 2026-09-28: DEC-06–11 dan DEC-13–16 **investigating** dengan arahan CTO dan baseline terinci pada [launch-decisions.md](launch-decisions.md), termasuk FE-01–09. Arahan Advance gratis, Rp1/token, Eleven v3 dan Workflow v2 tercatat eksplisit; baseline rekomendasi lain belum merupakan approval produksi atau bukti live vendor. Status open pada tabel historis di bawah dibaca bersama update ini.
 
 ## Register keputusan
 
@@ -50,7 +50,7 @@ Perubahan boundary Langflow/CallCraft, ownership data, biaya atau keamanan harus
 
 | Spike | Decision IDs | Bukti minimum |
 |---|---|---|
-| SPK-01: Langflow → CallCraft → backend | DEC-04, DEC-10, DEC-11 | Binding endpoint asli, context tidak dapat dioverride prompt, forbidden scope/owner, replay/conflict, error mapping, MCP dan import/export |
+| SPK-01: CallCraft JSON → trusted caller → backend | DEC-04, DEC-10, DEC-11 | REST schema, Langflow-to-backend gateway, context tidak dapat dioverride prompt, forbidden scope/owner, replay/conflict, error mapping, MCP dan import/export; tanpa callback CallCraft |
 | SPK-02: Streaming dan credential broker | DEC-04, DEC-08, DEC-10 | Cancel/partial output, timeout, revoked/expired reference, secret tidak persisten pada run/log/trace/export |
 | SPK-03: Payment lifecycle | DEC-06, DEC-07 | Sandbox checkout/webhook/lookup/refund sesuai produk; double/out-of-order delivery dan timeout sesudah provider menerima request |
 | SPK-04: Model metering | DEC-08 | Identifier/capability valid; usage sukses/partial/cancel, provider request identity dan unknown-usage recovery |

@@ -1,6 +1,6 @@
 # Environment Contract v3
 
-`.env` adalah konfigurasi lokal ignored; `.env.example` mendokumentasikan key backend yang didukung tanpa credentials. Parity key diperiksa oleh settings validation pada implementasi, bukan diasumsikan identik dengan file lokal. Konfigurasi proses Langflow terpisah di `runtime-components.md`. Backend settings loader belum tersedia, sementara custom runtime client sudah memvalidasi settings miliknya. Nilai development bukan approval konfigurasi production.
+`.env` adalah konfigurasi lokal ignored; `.env.example` mendokumentasikan key backend tanpa credentials. Settings loader tersedia di `src/temanbule/platform/settings.py`; sebagian koordinat runtime terpisah tidak dibaca loader backend. Konfigurasi proses Langflow terpisah di `runtime-components.md`. Baseline 2026-09-28 dan gap aktivasi: [launch-decisions.md](launch-decisions.md). Nilai development bukan bukti kesiapan production.
 
 ## Sumber Konfigurasi
 
@@ -42,7 +42,7 @@ Feature gates default false for unfinished capabilities. `FEATURE_AI_ENABLED=tru
 - Xendit environment sandbox/live must match selected credentials/product. `XENDIT_API_VERSION` required explicit vendor-supported value or documented `unversioned` sentinel when endpoint has no version header; never invent header. Localhost webhook URL is a placeholder, not reachable by Xendit: sandbox requires approved public HTTPS callback/tunnel; production public HTTPS mandatory. No remote callback changed in this task.
 - Positive integer bounds; refill percentage strictly between 0 and 100; usage checkpoint shorter than reservation window; lease heartbeat implementation shorter than lease TTL. Call/podcast hard maximum greater than target/closing grace, extension never beyond hard maximum. Upload limits harmonize S3 and parser. Frame TTL/in-flight/bytes/resolution all bounded.
 - Blank required field is error, never zero, magic default or silent feature disable. Errors list variable names only. Never dump `.env`, secrets, DSNs, OAuth tokens, credentials or full settings object to logs.
-- `LANGFLOW_INTERNAL_RUNTIME_BASE_URL` adalah koordinat gateway dari sisi backend; `TEMAN_BULE_RUNTIME_URL` dikonfigurasi terpisah pada server Langflow untuk origin HTTPS gateway yang sama, bersama paths/service token pada `runtime-components.md`. Nama-nama ini bukan alias otomatis. Workflow API v2 memerlukan flag server Langflow dan migrasi adapter eksplisit pada DEC-10.
+- `LANGFLOW_INTERNAL_RUNTIME_BASE_URL` adalah koordinat gateway dari sisi backend; `TEMAN_BULE_RUNTIME_URL` dikonfigurasi terpisah pada server Langflow untuk origin HTTPS gateway yang sama, bersama paths/service token pada `runtime-components.md`. Nama-nama ini bukan alias otomatis. Default extraction adapter sekarang `/api/v2/workflows` dengan sync envelope v2; flag `LANGFLOW_DEVELOPER_API_ENABLED=true` wajib pada server Langflow. Streaming/background/cancel masih membutuhkan spike.
 
 ## Belum Terisi / Aktivasi
 

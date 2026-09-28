@@ -9,7 +9,21 @@
     "tool": {"method": "POST", "path": "/internal/v1/runtime/tools:execute", "request": "ToolRequest", "response": "ToolResponse"}
   },
   "authentication": "Dedicated Langflow service identity over TLS; execution_ref is not a bearer credential. Bind persisted execution grant to service identity, owner, purpose, snapshot, tool scopes, expiry and absolute deadline.",
-  "routing": "Langflow -> runtime gateway -> CallCraft -> internal domain tool; gateway is trusted transport, not an alternative AI tool executor",
+  "routing": "Caller -> CallCraft REST -> JSON returned to caller; trusted Langflow/realtime caller -> runtime gateway -> backend domain service",
+  "langflow_callback_policy": {
+    "allowed": true,
+    "direction": "Langflow -> Teman Bule runtime gateway",
+    "authentication": "Langflow service identity and separate backend execution grant",
+    "requirements": ["correlation", "schema validation", "owner/scope validation", "idempotency for mutations"],
+    "job_status_callback": "No dedicated job-status callback endpoint implemented by this manifest",
+    "inbound_webhook": "POST /api/v1/webhook/{flow_id} triggers Langflow; it is not a backend callback"
+  },
+  "callcraft_callback_policy": {
+    "enabled": false,
+    "transport": "REST request/structured JSON response only",
+    "domain_execution": "Backend-owned; never inferred from extraction success",
+    "execution_context": "Never sent in prompts or model-visible arguments"
+  },
   "credential_policy": {
     "advance_llm_stt": "Resolve user_ai_selections and encrypted user_ai_credentials through backend broker; verify owner/provider/capability/status",
     "vip_llm_stt": "Resolve VIP_* server settings through backend runtime configuration",
@@ -30,5 +44,5 @@
     "Bound deadline and payload before upstream execution; record audit and trusted provider usage",
     "Grant renewal for background attempt occurs only after snapshot and ownership checks"
   ],
-  "activation_gates": ["Implement backend endpoints and execution grant lifecycle", "Verify CallCraft vendor binding and ephemeral credential delivery", "Verify Langflow/LFX import and component build", "Verify cancellation reaches vendor and mutation reconciliation", "Complete per-tool and per-provider integration fixtures"]
+  "activation_gates": ["Implement backend endpoints and execution grant lifecycle", "Verify CallCraft REST response schema and caller-side dispatch", "Verify Langflow/LFX import and component build", "Verify cancellation reaches vendor and backend mutation reconciliation", "Complete per-tool and per-provider integration fixtures"]
 }

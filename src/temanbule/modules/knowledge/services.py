@@ -61,13 +61,21 @@ class ExtractionPort(Protocol):
 
 
 class EmbeddingPort(Protocol):
-    """Port ke flow embedding_projection_{gemini,openai}. Konkret menunggu DEC-09.
+    """Port ke flow embedding_projection_{gemini,openai}. Konkret DEC-09.
 
     Mengembalikan vector_id provider untuk satu chunk pada satu profile.
+    ``profile`` duck-typed: adapter konkret menerima EmbeddingProfileSpec yang
+    sudah di-resolve (lihat embedding_adapter.resolve_embedding_profile).
     """
 
     async def embed(
-        self, *, chunk_text: str, profile: EmbeddingProfile
+        self,
+        *,
+        chunk_text: str,
+        profile: Any,
+        chunk_id: str,
+        source_version: str,
+        content_hash: str,
     ) -> str: ...
 
 
@@ -403,7 +411,13 @@ class KnowledgeService:
         if chunk.text is None:
             raise ValidationError("Chunk tanpa text inline tidak dapat diembed.")
 
-        vector_id = await embedder.embed(chunk_text=chunk.text, profile=profile)
+        vector_id = await embedder.embed(
+            chunk_text=chunk.text,
+            profile=profile,
+            chunk_id=chunk.id,
+            source_version=chunk.source_version,
+            content_hash=chunk.content_hash,
+        )
         projection.vector_id = vector_id
         projection.state = "projected"
         await self.session.flush()
