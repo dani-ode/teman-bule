@@ -1,0 +1,47 @@
+{
+  "artifact_version": "1.0.0",
+  "artifact_kind": "langflow_background_workflow_design",
+  "status": "draft",
+  "purpose": "chat_background",
+  "name": "Teman Bule - Chat Background Processing v1",
+  "description": "Asynchronous post-turn processing for canonical extraction, memory candidates, PostgreSQL persistence, and Astra projection.",
+  "deployment": {"execution_endpoint": "/api/v2/workflows", "mode": "background", "input_component": "TemanBuleJsonInput", "secrets_policy": "Trusted runtime broker only"},
+  "backend_contract": {
+    "registry_lookup": {"flow_registry": "ai_flow_registry", "where": "environment = current_environment AND purpose = 'chat_background' AND status = 'active'", "select": ["langflow_flow_id", "flow_version", "tool_allowlist", "timeout_seconds"]},
+    "request_mapping": {"flow_id": "ai_flow_registry.langflow_flow_id", "mode": "background", "input_value": "JSON.stringify(input)", "session_id": "input.session_id", "idempotency_key": "input.request_id"}
+  },
+  "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["schema_version", "request_id", "user_id", "session_id", "source_message_ids", "runtime_snapshot_id", "policy"],
+    "properties": {
+      "schema_version": {"const": "1"}, "request_id": {"type": "string"}, "user_id": {"type": "string"}, "session_id": {"type": "string"},
+      "source_message_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+      "runtime_snapshot_id": {"type": "string"},
+      "policy": {"type": "object", "required": ["tool_allowlist", "memory_consent"], "properties": {"tool_allowlist": {"type": "array", "items": {"type": "string"}}, "memory_consent": {"type": "boolean"}}, "additionalProperties": true}
+    }
+  },
+  "nodes": [
+    {"id": "json_input", "type": "custom", "component": "TemanBuleJsonInput", "label": "Background JSON Input"},
+    {"id": "source_loader", "type": "custom", "component": "TemanBuleConversationSourceLoader", "label": "Load Canonical Messages", "config": {"input": "source_message_ids", "read_only": true}},
+    {"id": "chunker", "type": "custom", "component": "TemanBuleConversationChunker", "label": "Semantic Chunking", "config": {"min_tokens": 200, "max_tokens": 500}},
+    {"id": "callcraft_memory", "type": "custom", "component": "CallcraftAPIComponent", "label": "CallCraft Memory Router", "config": {"spec_id_source": "tool_registry.callcraft_spec_id", "purpose": "chat_background", "tool_allowlist_source": "input.policy.tool_allowlist"}},
+    {"id": "memory_policy", "type": "custom", "component": "TemanBuleMemoryPolicy", "label": "Consent and Confidence Policy", "config": {"explicit_preference_precedence": true, "low_confidence_status": "proposed"}},
+    {"id": "postgres_persist", "type": "custom", "component": "TemanBuleCanonicalPersistence", "label": "Persist PostgreSQL Extraction", "config": {"idempotency_key": "session_id+source_message_ids+flow_version"}},
+    {"id": "astra_projection", "type": "custom", "component": "TemanBuleAstraProjectionDispatch", "label": "Dispatch Astra Projection", "config": {"collections_source": "runtime_snapshot", "durable": true}},
+    {"id": "background_result", "type": "custom", "component": "TemanBuleBackgroundResult", "label": "Background Result", "config": {"include": ["extraction_ref", "fact_revision_refs", "projection_job_refs"]}}
+  ],
+  "edges": [
+    {"source": "json_input", "target": "source_loader"},
+    {"source": "source_loader", "target": "chunker"},
+    {"source": "source_loader", "target": "callcraft_memory"},
+    {"source": "callcraft_memory", "target": "memory_policy"},
+    {"source": "chunker", "target": "postgres_persist"},
+    {"source": "memory_policy", "target": "postgres_persist"},
+    {"source": "postgres_persist", "target": "astra_projection"},
+    {"source": "postgres_persist", "target": "background_result"},
+    {"source": "astra_projection", "target": "background_result"}
+  ],
+  "output_schema": {"type": "object", "required": ["status", "extraction_ref", "projection_job_refs"], "properties": {"status": {"enum": ["completed", "partial"]}, "extraction_ref": {"type": "string"}, "fact_revision_refs": {"type": "array", "items": {"type": "string"}}, "projection_job_refs": {"type": "array", "items": {"type": "string"}}}},
+  "runtime_invariants": ["Source messages are loaded by authorized references, never accepted as canonical text from the caller.", "CallCraft returns candidate facts and arguments; trusted components perform persistence.", "Every mutation is idempotent and provenance-bound.", "Astra projection failure does not erase committed PostgreSQL extraction; reconciliation remains durable."]
+}

@@ -14,7 +14,7 @@ from temanbule.modules.catalog.models import AiModelConfiguration, ProviderCatal
 from temanbule.platform.crypto import FieldCipher
 from temanbule.platform.errors import FeatureUnavailableError
 
-router = APIRouter(prefix="/v1", tags=["byok"])
+router = APIRouter(prefix="/v1/me", tags=["byok"])
 
 
 class RegisterCredentialRequest(BaseModel):
@@ -71,7 +71,7 @@ def _build_service(
     return ByokCredentialService(session, cipher, verifier)
 
 
-@router.get("/providers", response_model=list[ProviderResponse])
+@router.get("/ai-providers", response_model=list[ProviderResponse])
 async def list_providers(
     session: SessionDep,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
@@ -99,7 +99,7 @@ async def list_providers(
     ]
 
 
-@router.get("/models", response_model=list[ModelResponse])
+@router.get("/ai-models", response_model=list[ModelResponse])
 async def list_models(
     session: SessionDep,
     provider_id: Annotated[str | None, Query()] = None,
@@ -133,7 +133,7 @@ async def list_models(
     ]
 
 
-@router.post("", response_model=CredentialResponse, status_code=201)
+@router.post("/ai-credentials", response_model=CredentialResponse, status_code=201)
 async def register_credential(
     body: RegisterCredentialRequest,
     current_user: CurrentUser,
@@ -158,7 +158,7 @@ async def register_credential(
     )
 
 
-@router.put("/selections", response_model=SelectModelResponse)
+@router.put("/ai-selections", response_model=SelectModelResponse)
 async def select_model(
     body: SelectModelRequest,
     current_user: CurrentUser,
@@ -181,7 +181,7 @@ async def select_model(
     )
 
 
-@router.delete("/{credential_id}", status_code=204)
+@router.delete("/ai-credentials/{credential_id}", status_code=204)
 async def revoke_credential(
     credential_id: str,
     current_user: CurrentUser,

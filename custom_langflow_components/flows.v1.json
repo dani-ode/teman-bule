@@ -1,5 +1,5 @@
 {
-  "artifact_version": "2.1.0",
+  "artifact_version": "2.2.0",
   "status": "staged",
   "artifact_kind": "flow_contract_catalog_not_canvas_export",
   "blueprint_refs": [".blueprint/langflow-flows.md", ".blueprint/astra-collections.md", ".blueprint/realtime-podcast.md"],

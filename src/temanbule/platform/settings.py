@@ -140,9 +140,6 @@ class Settings(BaseSettings):
     langflow_timeout_seconds: float = 60.0
     langflow_connect_timeout_seconds: float = 5.0
     langflow_max_connections: int = 50
-    langflow_flow_id_conversation_ingestion: str = ""
-    langflow_flow_id_user_fact_extraction: str = ""
-    langflow_flow_id_learning_assessment: str = ""
 
     # --- Mail ---
     mail_mailer: str = "smtp"

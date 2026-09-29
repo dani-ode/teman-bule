@@ -5,6 +5,7 @@ import json
 import httpx
 import pytest
 
+from temanbule.modules.catalog.flows import FlowBinding
 from temanbule.modules.knowledge.embedding_adapter import (
     DualEmbeddingAdapter,
     DualEmbeddingConfig,
@@ -20,6 +21,10 @@ from temanbule.platform.errors import DependencyUnavailableError
 @pytest.mark.asyncio
 @pytest.mark.parametrize("status,has_errors", [("completed", False), ("failed", True)])
 async def test_workflow_v2_request_and_terminal_result(status, has_errors):
+    async def resolver(purpose, version):
+        assert (purpose, version) == ("conversation_ingestion", "1")
+        return FlowBinding("flow-1", "1", "1", "1", 60000)
+
     def respond(request):
         assert request.url.path == "/api/v2/workflows"
         payload = json.loads(request.content)
@@ -34,8 +39,8 @@ async def test_workflow_v2_request_and_terminal_result(status, has_errors):
     adapter = LangflowExtractionAdapter(
         LangflowExtractionConfig(
             base_url="https://langflow.example", api_key="test",
-            run_path="/api/v2/workflows", flow_id_conversation_ingestion="flow-1",
-        ), transport=httpx.MockTransport(respond),
+            run_path="/api/v2/workflows",
+        ), resolver=resolver, transport=httpx.MockTransport(respond),
     )
     if has_errors:
         with pytest.raises(DependencyUnavailableError):

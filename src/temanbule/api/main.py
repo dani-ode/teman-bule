@@ -28,6 +28,7 @@ from temanbule.api.routers import practice as practice_router
 from temanbule.api.routers import profile as profile_router
 from temanbule.api.routers import toefl as toefl_router
 from temanbule.api.routers import vocabulary as vocabulary_router
+from temanbule.api.routers import webhooks as webhooks_router
 from temanbule.modules.billing.xendit_adapter import build_xendit_checkout
 from temanbule.modules.calls.livekit_adapter import build_livekit_token_factory
 from temanbule.modules.catalog.credential_verifier import build_credential_verifier
@@ -151,6 +152,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(media_router.router)
     app.include_router(calls_router.router)
     app.include_router(podcasts_router.router)
+    app.include_router(webhooks_router.router)
     app.include_router(internal_runtime_router.router)
 
     return app

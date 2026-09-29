@@ -44,6 +44,35 @@ Referensi vendor: [Workflow API quickstart](https://docs.langflow.org/workflow-a
 
 ## Workflow Wajib
 
+## Chat Application Flows (non-realtime)
+
+Status: proposed design, not deployed canvas exports. The existing
+`practice_interaction` canvas is a prototype. The following two flows have
+not been created in Langflow and have no deployment IDs:
+
+1. `chat_turn` — synchronous. Backend sends the validated v3 envelope containing
+   user/session/runtime snapshot, model configuration, persona (`elean|willy`),
+   and exactly one text or audio reference. The canvas is:
+   `Input (JSON/Webhook adapter) → CallCraft tool router → PostgreSQL read tools
+   and Astra retrieval → prompt builder → selected model → JSON response`, with
+   parallel `ElevenLabs TTS` and fire-and-forget `chat_background` dispatch.
+2. `chat_background` — asynchronous/durable. It receives references only,
+   chunks and persists conversation evidence to PostgreSQL and Astra, then uses
+   CallCraft for policy-approved memory/fact mutations (for example a confirmed
+   preferred name). It never blocks the user response and SQL jobs remain the
+   source of retry/completion truth.
+
+The proposed input node accepts structured JSON through component tweaks.
+Node type does not determine HTTP execution mode. The intended backend
+transport is `POST /api/v2/workflows`; Langflow's
+`/api/v1/webhook/{flow_id}` is reserved for systems that directly trigger a
+flow and is not the application chat transport.
+
+Resolve deployed flow IDs by environment/purpose/version from `ai_flow_registry`
+and CallCraft spec IDs from `tool_registry`. The background adapter resolves
+its pinned purpose/version from PostgreSQL; per-flow environment settings are
+not used. The proposed chat canvases still require implementation and deployment.
+
 Draft machine-readable daftar flow dan allowlist: `custom_langflow_components/flows.v1.json`. Kontrak adapter: `custom_langflow_components/callcraft-component.v1.json`. Keduanya bukan canvas export; lihat `contract-artifacts.md` untuk schema/export gates dan hubungan registry.
 
 | Flow key | Trigger dan hasil | Cost/credential | Tools |

@@ -1,0 +1,1235 @@
+{
+  "name": "Teman Bule - Chat Turn v1 (DRAFT - incomplete)",
+  "description": "Structural draft; only input parsing is implemented. Do not activate.",
+  "data": {
+    "nodes": [
+      {
+        "id": "json_input",
+        "type": "genericNode",
+        "position": {
+          "x": 0,
+          "y": 200
+        },
+        "data": {
+          "id": "json_input",
+          "type": "ChatCanvasStage",
+          "node": {
+            "display_name": "Application JSON Input",
+            "description": "Draft: TemanBuleJsonInput",
+            "base_classes": [
+              "Data"
+            ],
+            "field_order": [
+              "operation",
+              "payload",
+              "upstream"
+            ],
+            "template": {
+              "_type": "Component",
+              "code": {
+                "type": "code",
+                "value": "\"\"\"Canvas boundary for structured application chat.\n\nUnimplemented operations deliberately fail instead of returning invented data.\nThe source is embedded in exports so imports do not require repository mounts.\n\"\"\"\nimport json\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.io import DataInput, MultilineInput, Output, StrInput\nfrom lfx.schema.data import Data\n\n\nclass ChatCanvasStage(Component):\n    display_name = \"Teman Bule Chat Stage\"\n    name = \"ChatCanvasStage\"\n    description = \"Structured chat stage; unfinished integrations fail explicitly.\"\n    inputs = [\n        StrInput(name=\"operation\", display_name=\"Operation\", required=True),\n        MultilineInput(name=\"payload\", display_name=\"Application JSON\", value=\"\"),\n        DataInput(name=\"upstream\", display_name=\"Dependencies\", is_list=True),\n    ]\n    outputs = [Output(name=\"result\", display_name=\"Result\", method=\"execute\")]\n\n    def execute(self) -> Data:\n        if self.operation == \"json_input\":\n            value = json.loads(self.payload)\n            if not isinstance(value, dict):\n                raise ValueError(\"Application input must be a JSON object\")\n            for field in (\"request_id\", \"session\", \"user\", \"ai_configuration\", \"input\"):\n                if field not in value:\n                    raise ValueError(f\"Missing application input: {field}\")\n            return Data(data=value)\n        raise NotImplementedError(\n            f\"Chat stage '{self.operation}' has no runtime implementation. \"\n            \"This draft canvas must not be activated.\"\n        )\n"
+              },
+              "operation": {
+                "type": "str",
+                "_input_type": "StrInput",
+                "value": "json_input",
+                "required": true,
+                "name": "operation",
+                "display_name": "Operation",
+                "show": true,
+                "advanced": false
+              },
+              "payload": {
+                "type": "str",
+                "_input_type": "MultilineInput",
+                "value": "",
+                "multiline": true,
+                "name": "payload",
+                "display_name": "Payload",
+                "show": true,
+                "advanced": false
+              },
+              "upstream": {
+                "type": "other",
+                "_input_type": "DataInput",
+                "input_types": [
+                  "Data"
+                ],
+                "list": true,
+                "value": [],
+                "name": "upstream",
+                "display_name": "Upstream",
+                "show": true,
+                "advanced": false
+              }
+            },
+            "outputs": [
+              {
+                "name": "result",
+                "display_name": "Result",
+                "method": "execute",
+                "types": [
+                  "Data"
+                ],
+                "selected": "Data",
+                "cache": true
+              }
+            ],
+            "metadata": {
+              "implementation_status": "input_only"
+            }
+          }
+        }
+      },
+      {
+        "id": "normalize_input",
+        "type": "genericNode",
+        "position": {
+          "x": 360,
+          "y": 200
+        },
+        "data": {
+          "id": "normalize_input",
+          "type": "ChatCanvasStage",
+          "node": {
+            "display_name": "Normalize Text/Audio",
+            "description": "Draft: TemanBuleChatInputNormalizer",
+            "base_classes": [
+              "Data"
+            ],
+            "field_order": [
+              "operation",
+              "payload",
+              "upstream"
+            ],
+            "template": {
+              "_type": "Component",
+              "code": {
+                "type": "code",
+                "value": "\"\"\"Canvas boundary for structured application chat.\n\nUnimplemented operations deliberately fail instead of returning invented data.\nThe source is embedded in exports so imports do not require repository mounts.\n\"\"\"\nimport json\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.io import DataInput, MultilineInput, Output, StrInput\nfrom lfx.schema.data import Data\n\n\nclass ChatCanvasStage(Component):\n    display_name = \"Teman Bule Chat Stage\"\n    name = \"ChatCanvasStage\"\n    description = \"Structured chat stage; unfinished integrations fail explicitly.\"\n    inputs = [\n        StrInput(name=\"operation\", display_name=\"Operation\", required=True),\n        MultilineInput(name=\"payload\", display_name=\"Application JSON\", value=\"\"),\n        DataInput(name=\"upstream\", display_name=\"Dependencies\", is_list=True),\n    ]\n    outputs = [Output(name=\"result\", display_name=\"Result\", method=\"execute\")]\n\n    def execute(self) -> Data:\n        if self.operation == \"json_input\":\n            value = json.loads(self.payload)\n            if not isinstance(value, dict):\n                raise ValueError(\"Application input must be a JSON object\")\n            for field in (\"request_id\", \"session\", \"user\", \"ai_configuration\", \"input\"):\n                if field not in value:\n                    raise ValueError(f\"Missing application input: {field}\")\n            return Data(data=value)\n        raise NotImplementedError(\n            f\"Chat stage '{self.operation}' has no runtime implementation. \"\n            \"This draft canvas must not be activated.\"\n        )\n"
+              },
+              "operation": {
+                "type": "str",
+                "_input_type": "StrInput",
+                "value": "normalize_input",
+                "required": true,
+                "name": "operation",
+                "display_name": "Operation",
+                "show": true,
+                "advanced": false
+              },
+              "payload": {
+                "type": "str",
+                "_input_type": "MultilineInput",
+                "value": "",
+                "multiline": true,
+                "name": "payload",
+                "display_name": "Payload",
+                "show": true,
+                "advanced": false
+              },
+              "upstream": {
+                "type": "other",
+                "_input_type": "DataInput",
+                "input_types": [
+                  "Data"
+                ],
+                "list": true,
+                "value": [],
+                "name": "upstream",
+                "display_name": "Upstream",
+                "show": true,
+                "advanced": false
+              }
+            },
+            "outputs": [
+              {
+                "name": "result",
+                "display_name": "Result",
+                "method": "execute",
+                "types": [
+                  "Data"
+                ],
+                "selected": "Data",
+                "cache": true
+              }
+            ],
+            "metadata": {
+              "implementation_status": "input_only"
+            }
+          }
+        }
+      },
+      {
+        "id": "callcraft_router",
+        "type": "genericNode",
+        "position": {
+          "x": 720,
+          "y": 200
+        },
+        "data": {
+          "id": "callcraft_router",
+          "type": "ChatCanvasStage",
+          "node": {
+            "display_name": "CallCraft Tool Router",
+            "description": "Draft: CallcraftAPIComponent",
+            "base_classes": [
+              "Data"
+            ],
+            "field_order": [
+              "operation",
+              "payload",
+              "upstream"
+            ],
+            "template": {
+              "_type": "Component",
+              "code": {
+                "type": "code",
+                "value": "\"\"\"Canvas boundary for structured application chat.\n\nUnimplemented operations deliberately fail instead of returning invented data.\nThe source is embedded in exports so imports do not require repository mounts.\n\"\"\"\nimport json\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.io import DataInput, MultilineInput, Output, StrInput\nfrom lfx.schema.data import Data\n\n\nclass ChatCanvasStage(Component):\n    display_name = \"Teman Bule Chat Stage\"\n    name = \"ChatCanvasStage\"\n    description = \"Structured chat stage; unfinished integrations fail explicitly.\"\n    inputs = [\n        StrInput(name=\"operation\", display_name=\"Operation\", required=True),\n        MultilineInput(name=\"payload\", display_name=\"Application JSON\", value=\"\"),\n        DataInput(name=\"upstream\", display_name=\"Dependencies\", is_list=True),\n    ]\n    outputs = [Output(name=\"result\", display_name=\"Result\", method=\"execute\")]\n\n    def execute(self) -> Data:\n        if self.operation == \"json_input\":\n            value = json.loads(self.payload)\n            if not isinstance(value, dict):\n                raise ValueError(\"Application input must be a JSON object\")\n            for field in (\"request_id\", \"session\", \"user\", \"ai_configuration\", \"input\"):\n                if field not in value:\n                    raise ValueError(f\"Missing application input: {field}\")\n            return Data(data=value)\n        raise NotImplementedError(\n            f\"Chat stage '{self.operation}' has no runtime implementation. \"\n            \"This draft canvas must not be activated.\"\n        )\n"
+              },
+              "operation": {
+                "type": "str",
+                "_input_type": "StrInput",
+                "value": "callcraft_router",
+                "required": true,
+                "name": "operation",
+                "display_name": "Operation",
+                "show": true,
+                "advanced": false
+              },
+              "payload": {
+                "type": "str",
+                "_input_type": "MultilineInput",
+                "value": "",
+                "multiline": true,
+                "name": "payload",
+                "display_name": "Payload",
+                "show": true,
+                "advanced": false
+              },
+              "upstream": {
+                "type": "other",
+                "_input_type": "DataInput",
+                "input_types": [
+                  "Data"
+                ],
+                "list": true,
+                "value": [],
+                "name": "upstream",
+                "display_name": "Upstream",
+                "show": true,
+                "advanced": false
+              }
+            },
+            "outputs": [
+              {
+                "name": "result",
+                "display_name": "Result",
+                "method": "execute",
+                "types": [
+                  "Data"
+                ],
+                "selected": "Data",
+                "cache": true
+              }
+            ],
+            "metadata": {
+              "implementation_status": "input_only"
+            }
+          }
+        }
+      },
+      {
+        "id": "postgres_tools",
+        "type": "genericNode",
+        "position": {
+          "x": 1080,
+          "y": 200
+        },
+        "data": {
+          "id": "postgres_tools",
+          "type": "ChatCanvasStage",
+          "node": {
+            "display_name": "PostgreSQL Authorized Reads",
+            "description": "Draft: TemanBulePostgresReadTools",
+            "base_classes": [
+              "Data"
+            ],
+            "field_order": [
+              "operation",
+              "payload",
+              "upstream"
+            ],
+            "template": {
+              "_type": "Component",
+              "code": {
+                "type": "code",
+                "value": "\"\"\"Canvas boundary for structured application chat.\n\nUnimplemented operations deliberately fail instead of returning invented data.\nThe source is embedded in exports so imports do not require repository mounts.\n\"\"\"\nimport json\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.io import DataInput, MultilineInput, Output, StrInput\nfrom lfx.schema.data import Data\n\n\nclass ChatCanvasStage(Component):\n    display_name = \"Teman Bule Chat Stage\"\n    name = \"ChatCanvasStage\"\n    description = \"Structured chat stage; unfinished integrations fail explicitly.\"\n    inputs = [\n        StrInput(name=\"operation\", display_name=\"Operation\", required=True),\n        MultilineInput(name=\"payload\", display_name=\"Application JSON\", value=\"\"),\n        DataInput(name=\"upstream\", display_name=\"Dependencies\", is_list=True),\n    ]\n    outputs = [Output(name=\"result\", display_name=\"Result\", method=\"execute\")]\n\n    def execute(self) -> Data:\n        if self.operation == \"json_input\":\n            value = json.loads(self.payload)\n            if not isinstance(value, dict):\n                raise ValueError(\"Application input must be a JSON object\")\n            for field in (\"request_id\", \"session\", \"user\", \"ai_configuration\", \"input\"):\n                if field not in value:\n                    raise ValueError(f\"Missing application input: {field}\")\n            return Data(data=value)\n        raise NotImplementedError(\n            f\"Chat stage '{self.operation}' has no runtime implementation. \"\n            \"This draft canvas must not be activated.\"\n        )\n"
+              },
+              "operation": {
+                "type": "str",
+                "_input_type": "StrInput",
+                "value": "postgres_tools",
+                "required": true,
+                "name": "operation",
+                "display_name": "Operation",
+                "show": true,
+                "advanced": false
+              },
+              "payload": {
+                "type": "str",
+                "_input_type": "MultilineInput",
+                "value": "",
+                "multiline": true,
+                "name": "payload",
+                "display_name": "Payload",
+                "show": true,
+                "advanced": false
+              },
+              "upstream": {
+                "type": "other",
+                "_input_type": "DataInput",
+                "input_types": [
+                  "Data"
+                ],
+                "list": true,
+                "value": [],
+                "name": "upstream",
+                "display_name": "Upstream",
+                "show": true,
+                "advanced": false
+              }
+            },
+            "outputs": [
+              {
+                "name": "result",
+                "display_name": "Result",
+                "method": "execute",
+                "types": [
+                  "Data"
+                ],
+                "selected": "Data",
+                "cache": true
+              }
+            ],
+            "metadata": {
+              "implementation_status": "input_only"
+            }
+          }
+        }
+      },
+      {
+        "id": "astra_retriever",
+        "type": "genericNode",
+        "position": {
+          "x": 1440,
+          "y": 200
+        },
+        "data": {
+          "id": "astra_retriever",
+          "type": "ChatCanvasStage",
+          "node": {
+            "display_name": "Astra RAG",
+            "description": "Draft: TemanBuleAstraRetriever",
+            "base_classes": [
+              "Data"
+            ],
+            "field_order": [
+              "operation",
+              "payload",
+              "upstream"
+            ],
+            "template": {
+              "_type": "Component",
+              "code": {
+                "type": "code",
+                "value": "\"\"\"Canvas boundary for structured application chat.\n\nUnimplemented operations deliberately fail instead of returning invented data.\nThe source is embedded in exports so imports do not require repository mounts.\n\"\"\"\nimport json\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.io import DataInput, MultilineInput, Output, StrInput\nfrom lfx.schema.data import Data\n\n\nclass ChatCanvasStage(Component):\n    display_name = \"Teman Bule Chat Stage\"\n    name = \"ChatCanvasStage\"\n    description = \"Structured chat stage; unfinished integrations fail explicitly.\"\n    inputs = [\n        StrInput(name=\"operation\", display_name=\"Operation\", required=True),\n        MultilineInput(name=\"payload\", display_name=\"Application JSON\", value=\"\"),\n        DataInput(name=\"upstream\", display_name=\"Dependencies\", is_list=True),\n    ]\n    outputs = [Output(name=\"result\", display_name=\"Result\", method=\"execute\")]\n\n    def execute(self) -> Data:\n        if self.operation == \"json_input\":\n            value = json.loads(self.payload)\n            if not isinstance(value, dict):\n                raise ValueError(\"Application input must be a JSON object\")\n            for field in (\"request_id\", \"session\", \"user\", \"ai_configuration\", \"input\"):\n                if field not in value:\n                    raise ValueError(f\"Missing application input: {field}\")\n            return Data(data=value)\n        raise NotImplementedError(\n            f\"Chat stage '{self.operation}' has no runtime implementation. \"\n            \"This draft canvas must not be activated.\"\n        )\n"
+              },
+              "operation": {
+                "type": "str",
+                "_input_type": "StrInput",
+                "value": "astra_retriever",
+                "required": true,
+                "name": "operation",
+                "display_name": "Operation",
+                "show": true,
+                "advanced": false
+              },
+              "payload": {
+                "type": "str",
+                "_input_type": "MultilineInput",
+                "value": "",
+                "multiline": true,
+                "name": "payload",
+                "display_name": "Payload",
+                "show": true,
+                "advanced": false
+              },
+              "upstream": {
+                "type": "other",
+                "_input_type": "DataInput",
+                "input_types": [
+                  "Data"
+                ],
+                "list": true,
+                "value": [],
+                "name": "upstream",
+                "display_name": "Upstream",
+                "show": true,
+                "advanced": false
+              }
+            },
+            "outputs": [
+              {
+                "name": "result",
+                "display_name": "Result",
+                "method": "execute",
+                "types": [
+                  "Data"
+                ],
+                "selected": "Data",
+                "cache": true
+              }
+            ],
+            "metadata": {
+              "implementation_status": "input_only"
+            }
+          }
+        }
+      },
+      {
+        "id": "prompt_builder",
+        "type": "genericNode",
+        "position": {
+          "x": 1800,
+          "y": 200
+        },
+        "data": {
+          "id": "prompt_builder",
+          "type": "ChatCanvasStage",
+          "node": {
+            "display_name": "Persona and Context Prompt",
+            "description": "Draft: TemanBuleChatPromptBuilder",
+            "base_classes": [
+              "Data"
+            ],
+            "field_order": [
+              "operation",
+              "payload",
+              "upstream"
+            ],
+            "template": {
+              "_type": "Component",
+              "code": {
+                "type": "code",
+                "value": "\"\"\"Canvas boundary for structured application chat.\n\nUnimplemented operations deliberately fail instead of returning invented data.\nThe source is embedded in exports so imports do not require repository mounts.\n\"\"\"\nimport json\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.io import DataInput, MultilineInput, Output, StrInput\nfrom lfx.schema.data import Data\n\n\nclass ChatCanvasStage(Component):\n    display_name = \"Teman Bule Chat Stage\"\n    name = \"ChatCanvasStage\"\n    description = \"Structured chat stage; unfinished integrations fail explicitly.\"\n    inputs = [\n        StrInput(name=\"operation\", display_name=\"Operation\", required=True),\n        MultilineInput(name=\"payload\", display_name=\"Application JSON\", value=\"\"),\n        DataInput(name=\"upstream\", display_name=\"Dependencies\", is_list=True),\n    ]\n    outputs = [Output(name=\"result\", display_name=\"Result\", method=\"execute\")]\n\n    def execute(self) -> Data:\n        if self.operation == \"json_input\":\n            value = json.loads(self.payload)\n            if not isinstance(value, dict):\n                raise ValueError(\"Application input must be a JSON object\")\n            for field in (\"request_id\", \"session\", \"user\", \"ai_configuration\", \"input\"):\n                if field not in value:\n                    raise ValueError(f\"Missing application input: {field}\")\n            return Data(data=value)\n        raise NotImplementedError(\n            f\"Chat stage '{self.operation}' has no runtime implementation. \"\n            \"This draft canvas must not be activated.\"\n        )\n"
+              },
+              "operation": {
+                "type": "str",
+                "_input_type": "StrInput",
+                "value": "prompt_builder",
+                "required": true,
+                "name": "operation",
+                "display_name": "Operation",
+                "show": true,
+                "advanced": false
+              },
+              "payload": {
+                "type": "str",
+                "_input_type": "MultilineInput",
+                "value": "",
+                "multiline": true,
+                "name": "payload",
+                "display_name": "Payload",
+                "show": true,
+                "advanced": false
+              },
+              "upstream": {
+                "type": "other",
+                "_input_type": "DataInput",
+                "input_types": [
+                  "Data"
+                ],
+                "list": true,
+                "value": [],
+                "name": "upstream",
+                "display_name": "Upstream",
+                "show": true,
+                "advanced": false
+              }
+            },
+            "outputs": [
+              {
+                "name": "result",
+                "display_name": "Result",
+                "method": "execute",
+                "types": [
+                  "Data"
+                ],
+                "selected": "Data",
+                "cache": true
+              }
+            ],
+            "metadata": {
+              "implementation_status": "input_only"
+            }
+          }
+        }
+      },
+      {
+        "id": "ai_model",
+        "type": "genericNode",
+        "position": {
+          "x": 2160,
+          "y": 200
+        },
+        "data": {
+          "id": "ai_model",
+          "type": "ChatCanvasStage",
+          "node": {
+            "display_name": "Configured AI Model",
+            "description": "Draft: TemanBuleConfiguredAIModel",
+            "base_classes": [
+              "Data"
+            ],
+            "field_order": [
+              "operation",
+              "payload",
+              "upstream"
+            ],
+            "template": {
+              "_type": "Component",
+              "code": {
+                "type": "code",
+                "value": "\"\"\"Canvas boundary for structured application chat.\n\nUnimplemented operations deliberately fail instead of returning invented data.\nThe source is embedded in exports so imports do not require repository mounts.\n\"\"\"\nimport json\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.io import DataInput, MultilineInput, Output, StrInput\nfrom lfx.schema.data import Data\n\n\nclass ChatCanvasStage(Component):\n    display_name = \"Teman Bule Chat Stage\"\n    name = \"ChatCanvasStage\"\n    description = \"Structured chat stage; unfinished integrations fail explicitly.\"\n    inputs = [\n        StrInput(name=\"operation\", display_name=\"Operation\", required=True),\n        MultilineInput(name=\"payload\", display_name=\"Application JSON\", value=\"\"),\n        DataInput(name=\"upstream\", display_name=\"Dependencies\", is_list=True),\n    ]\n    outputs = [Output(name=\"result\", display_name=\"Result\", method=\"execute\")]\n\n    def execute(self) -> Data:\n        if self.operation == \"json_input\":\n            value = json.loads(self.payload)\n            if not isinstance(value, dict):\n                raise ValueError(\"Application input must be a JSON object\")\n            for field in (\"request_id\", \"session\", \"user\", \"ai_configuration\", \"input\"):\n                if field not in value:\n                    raise ValueError(f\"Missing application input: {field}\")\n            return Data(data=value)\n        raise NotImplementedError(\n            f\"Chat stage '{self.operation}' has no runtime implementation. \"\n            \"This draft canvas must not be activated.\"\n        )\n"
+              },
+              "operation": {
+                "type": "str",
+                "_input_type": "StrInput",
+                "value": "ai_model",
+                "required": true,
+                "name": "operation",
+                "display_name": "Operation",
+                "show": true,
+                "advanced": false
+              },
+              "payload": {
+                "type": "str",
+                "_input_type": "MultilineInput",
+                "value": "",
+                "multiline": true,
+                "name": "payload",
+                "display_name": "Payload",
+                "show": true,
+                "advanced": false
+              },
+              "upstream": {
+                "type": "other",
+                "_input_type": "DataInput",
+                "input_types": [
+                  "Data"
+                ],
+                "list": true,
+                "value": [],
+                "name": "upstream",
+                "display_name": "Upstream",
+                "show": true,
+                "advanced": false
+              }
+            },
+            "outputs": [
+              {
+                "name": "result",
+                "display_name": "Result",
+                "method": "execute",
+                "types": [
+                  "Data"
+                ],
+                "selected": "Data",
+                "cache": true
+              }
+            ],
+            "metadata": {
+              "implementation_status": "input_only"
+            }
+          }
+        }
+      },
+      {
+        "id": "response_parser",
+        "type": "genericNode",
+        "position": {
+          "x": 2520,
+          "y": 200
+        },
+        "data": {
+          "id": "response_parser",
+          "type": "ChatCanvasStage",
+          "node": {
+            "display_name": "Validate Structured Response",
+            "description": "Draft: TemanBuleChatResponseParser",
+            "base_classes": [
+              "Data"
+            ],
+            "field_order": [
+              "operation",
+              "payload",
+              "upstream"
+            ],
+            "template": {
+              "_type": "Component",
+              "code": {
+                "type": "code",
+                "value": "\"\"\"Canvas boundary for structured application chat.\n\nUnimplemented operations deliberately fail instead of returning invented data.\nThe source is embedded in exports so imports do not require repository mounts.\n\"\"\"\nimport json\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.io import DataInput, MultilineInput, Output, StrInput\nfrom lfx.schema.data import Data\n\n\nclass ChatCanvasStage(Component):\n    display_name = \"Teman Bule Chat Stage\"\n    name = \"ChatCanvasStage\"\n    description = \"Structured chat stage; unfinished integrations fail explicitly.\"\n    inputs = [\n        StrInput(name=\"operation\", display_name=\"Operation\", required=True),\n        MultilineInput(name=\"payload\", display_name=\"Application JSON\", value=\"\"),\n        DataInput(name=\"upstream\", display_name=\"Dependencies\", is_list=True),\n    ]\n    outputs = [Output(name=\"result\", display_name=\"Result\", method=\"execute\")]\n\n    def execute(self) -> Data:\n        if self.operation == \"json_input\":\n            value = json.loads(self.payload)\n            if not isinstance(value, dict):\n                raise ValueError(\"Application input must be a JSON object\")\n            for field in (\"request_id\", \"session\", \"user\", \"ai_configuration\", \"input\"):\n                if field not in value:\n                    raise ValueError(f\"Missing application input: {field}\")\n            return Data(data=value)\n        raise NotImplementedError(\n            f\"Chat stage '{self.operation}' has no runtime implementation. \"\n            \"This draft canvas must not be activated.\"\n        )\n"
+              },
+              "operation": {
+                "type": "str",
+                "_input_type": "StrInput",
+                "value": "response_parser",
+                "required": true,
+                "name": "operation",
+                "display_name": "Operation",
+                "show": true,
+                "advanced": false
+              },
+              "payload": {
+                "type": "str",
+                "_input_type": "MultilineInput",
+                "value": "",
+                "multiline": true,
+                "name": "payload",
+                "display_name": "Payload",
+                "show": true,
+                "advanced": false
+              },
+              "upstream": {
+                "type": "other",
+                "_input_type": "DataInput",
+                "input_types": [
+                  "Data"
+                ],
+                "list": true,
+                "value": [],
+                "name": "upstream",
+                "display_name": "Upstream",
+                "show": true,
+                "advanced": false
+              }
+            },
+            "outputs": [
+              {
+                "name": "result",
+                "display_name": "Result",
+                "method": "execute",
+                "types": [
+                  "Data"
+                ],
+                "selected": "Data",
+                "cache": true
+              }
+            ],
+            "metadata": {
+              "implementation_status": "input_only"
+            }
+          }
+        }
+      },
+      {
+        "id": "tts",
+        "type": "genericNode",
+        "position": {
+          "x": 2880,
+          "y": 200
+        },
+        "data": {
+          "id": "tts",
+          "type": "ChatCanvasStage",
+          "node": {
+            "display_name": "ElevenLabs TTS",
+            "description": "Draft: TemanBuleElevenLabsTTS",
+            "base_classes": [
+              "Data"
+            ],
+            "field_order": [
+              "operation",
+              "payload",
+              "upstream"
+            ],
+            "template": {
+              "_type": "Component",
+              "code": {
+                "type": "code",
+                "value": "\"\"\"Canvas boundary for structured application chat.\n\nUnimplemented operations deliberately fail instead of returning invented data.\nThe source is embedded in exports so imports do not require repository mounts.\n\"\"\"\nimport json\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.io import DataInput, MultilineInput, Output, StrInput\nfrom lfx.schema.data import Data\n\n\nclass ChatCanvasStage(Component):\n    display_name = \"Teman Bule Chat Stage\"\n    name = \"ChatCanvasStage\"\n    description = \"Structured chat stage; unfinished integrations fail explicitly.\"\n    inputs = [\n        StrInput(name=\"operation\", display_name=\"Operation\", required=True),\n        MultilineInput(name=\"payload\", display_name=\"Application JSON\", value=\"\"),\n        DataInput(name=\"upstream\", display_name=\"Dependencies\", is_list=True),\n    ]\n    outputs = [Output(name=\"result\", display_name=\"Result\", method=\"execute\")]\n\n    def execute(self) -> Data:\n        if self.operation == \"json_input\":\n            value = json.loads(self.payload)\n            if not isinstance(value, dict):\n                raise ValueError(\"Application input must be a JSON object\")\n            for field in (\"request_id\", \"session\", \"user\", \"ai_configuration\", \"input\"):\n                if field not in value:\n                    raise ValueError(f\"Missing application input: {field}\")\n            return Data(data=value)\n        raise NotImplementedError(\n            f\"Chat stage '{self.operation}' has no runtime implementation. \"\n            \"This draft canvas must not be activated.\"\n        )\n"
+              },
+              "operation": {
+                "type": "str",
+                "_input_type": "StrInput",
+                "value": "tts",
+                "required": true,
+                "name": "operation",
+                "display_name": "Operation",
+                "show": true,
+                "advanced": false
+              },
+              "payload": {
+                "type": "str",
+                "_input_type": "MultilineInput",
+                "value": "",
+                "multiline": true,
+                "name": "payload",
+                "display_name": "Payload",
+                "show": true,
+                "advanced": false
+              },
+              "upstream": {
+                "type": "other",
+                "_input_type": "DataInput",
+                "input_types": [
+                  "Data"
+                ],
+                "list": true,
+                "value": [],
+                "name": "upstream",
+                "display_name": "Upstream",
+                "show": true,
+                "advanced": false
+              }
+            },
+            "outputs": [
+              {
+                "name": "result",
+                "display_name": "Result",
+                "method": "execute",
+                "types": [
+                  "Data"
+                ],
+                "selected": "Data",
+                "cache": true
+              }
+            ],
+            "metadata": {
+              "implementation_status": "input_only"
+            }
+          }
+        }
+      },
+      {
+        "id": "background_dispatch",
+        "type": "genericNode",
+        "position": {
+          "x": 3240,
+          "y": 200
+        },
+        "data": {
+          "id": "background_dispatch",
+          "type": "ChatCanvasStage",
+          "node": {
+            "display_name": "Dispatch Chat Background",
+            "description": "Draft: TemanBuleLangflowDispatch",
+            "base_classes": [
+              "Data"
+            ],
+            "field_order": [
+              "operation",
+              "payload",
+              "upstream"
+            ],
+            "template": {
+              "_type": "Component",
+              "code": {
+                "type": "code",
+                "value": "\"\"\"Canvas boundary for structured application chat.\n\nUnimplemented operations deliberately fail instead of returning invented data.\nThe source is embedded in exports so imports do not require repository mounts.\n\"\"\"\nimport json\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.io import DataInput, MultilineInput, Output, StrInput\nfrom lfx.schema.data import Data\n\n\nclass ChatCanvasStage(Component):\n    display_name = \"Teman Bule Chat Stage\"\n    name = \"ChatCanvasStage\"\n    description = \"Structured chat stage; unfinished integrations fail explicitly.\"\n    inputs = [\n        StrInput(name=\"operation\", display_name=\"Operation\", required=True),\n        MultilineInput(name=\"payload\", display_name=\"Application JSON\", value=\"\"),\n        DataInput(name=\"upstream\", display_name=\"Dependencies\", is_list=True),\n    ]\n    outputs = [Output(name=\"result\", display_name=\"Result\", method=\"execute\")]\n\n    def execute(self) -> Data:\n        if self.operation == \"json_input\":\n            value = json.loads(self.payload)\n            if not isinstance(value, dict):\n                raise ValueError(\"Application input must be a JSON object\")\n            for field in (\"request_id\", \"session\", \"user\", \"ai_configuration\", \"input\"):\n                if field not in value:\n                    raise ValueError(f\"Missing application input: {field}\")\n            return Data(data=value)\n        raise NotImplementedError(\n            f\"Chat stage '{self.operation}' has no runtime implementation. \"\n            \"This draft canvas must not be activated.\"\n        )\n"
+              },
+              "operation": {
+                "type": "str",
+                "_input_type": "StrInput",
+                "value": "background_dispatch",
+                "required": true,
+                "name": "operation",
+                "display_name": "Operation",
+                "show": true,
+                "advanced": false
+              },
+              "payload": {
+                "type": "str",
+                "_input_type": "MultilineInput",
+                "value": "",
+                "multiline": true,
+                "name": "payload",
+                "display_name": "Payload",
+                "show": true,
+                "advanced": false
+              },
+              "upstream": {
+                "type": "other",
+                "_input_type": "DataInput",
+                "input_types": [
+                  "Data"
+                ],
+                "list": true,
+                "value": [],
+                "name": "upstream",
+                "display_name": "Upstream",
+                "show": true,
+                "advanced": false
+              }
+            },
+            "outputs": [
+              {
+                "name": "result",
+                "display_name": "Result",
+                "method": "execute",
+                "types": [
+                  "Data"
+                ],
+                "selected": "Data",
+                "cache": true
+              }
+            ],
+            "metadata": {
+              "implementation_status": "input_only"
+            }
+          }
+        }
+      },
+      {
+        "id": "chat_response",
+        "type": "genericNode",
+        "position": {
+          "x": 3600,
+          "y": 200
+        },
+        "data": {
+          "id": "chat_response",
+          "type": "ChatCanvasStage",
+          "node": {
+            "display_name": "Chat Response",
+            "description": "Draft: TemanBuleChatResponse",
+            "base_classes": [
+              "Data"
+            ],
+            "field_order": [
+              "operation",
+              "payload",
+              "upstream"
+            ],
+            "template": {
+              "_type": "Component",
+              "code": {
+                "type": "code",
+                "value": "\"\"\"Canvas boundary for structured application chat.\n\nUnimplemented operations deliberately fail instead of returning invented data.\nThe source is embedded in exports so imports do not require repository mounts.\n\"\"\"\nimport json\n\nfrom lfx.custom.custom_component.component import Component\nfrom lfx.io import DataInput, MultilineInput, Output, StrInput\nfrom lfx.schema.data import Data\n\n\nclass ChatCanvasStage(Component):\n    display_name = \"Teman Bule Chat Stage\"\n    name = \"ChatCanvasStage\"\n    description = \"Structured chat stage; unfinished integrations fail explicitly.\"\n    inputs = [\n        StrInput(name=\"operation\", display_name=\"Operation\", required=True),\n        MultilineInput(name=\"payload\", display_name=\"Application JSON\", value=\"\"),\n        DataInput(name=\"upstream\", display_name=\"Dependencies\", is_list=True),\n    ]\n    outputs = [Output(name=\"result\", display_name=\"Result\", method=\"execute\")]\n\n    def execute(self) -> Data:\n        if self.operation == \"json_input\":\n            value = json.loads(self.payload)\n            if not isinstance(value, dict):\n                raise ValueError(\"Application input must be a JSON object\")\n            for field in (\"request_id\", \"session\", \"user\", \"ai_configuration\", \"input\"):\n                if field not in value:\n                    raise ValueError(f\"Missing application input: {field}\")\n            return Data(data=value)\n        raise NotImplementedError(\n            f\"Chat stage '{self.operation}' has no runtime implementation. \"\n            \"This draft canvas must not be activated.\"\n        )\n"
+              },
+              "operation": {
+                "type": "str",
+                "_input_type": "StrInput",
+                "value": "chat_response",
+                "required": true,
+                "name": "operation",
+                "display_name": "Operation",
+                "show": true,
+                "advanced": false
+              },
+              "payload": {
+                "type": "str",
+                "_input_type": "MultilineInput",
+                "value": "",
+                "multiline": true,
+                "name": "payload",
+                "display_name": "Payload",
+                "show": true,
+                "advanced": false
+              },
+              "upstream": {
+                "type": "other",
+                "_input_type": "DataInput",
+                "input_types": [
+                  "Data"
+                ],
+                "list": true,
+                "value": [],
+                "name": "upstream",
+                "display_name": "Upstream",
+                "show": true,
+                "advanced": false
+              }
+            },
+            "outputs": [
+              {
+                "name": "result",
+                "display_name": "Result",
+                "method": "execute",
+                "types": [
+                  "Data"
+                ],
+                "selected": "Data",
+                "cache": true
+              }
+            ],
+            "metadata": {
+              "implementation_status": "input_only"
+            }
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge-0",
+        "source": "json_input",
+        "target": "normalize_input",
+        "sourceHandle": "{\u0153id\u0153: \u0153json_input\u0153, \u0153dataType\u0153: \u0153ChatCanvasStage\u0153, \u0153name\u0153: \u0153result\u0153, \u0153output_types\u0153: [\u0153Data\u0153]}",
+        "targetHandle": "{\u0153id\u0153: \u0153normalize_input\u0153, \u0153fieldName\u0153: \u0153upstream\u0153, \u0153inputTypes\u0153: [\u0153Data\u0153], \u0153type\u0153: \u0153other\u0153}",
+        "data": {
+          "sourceHandle": {
+            "id": "json_input",
+            "dataType": "ChatCanvasStage",
+            "name": "result",
+            "output_types": [
+              "Data"
+            ]
+          },
+          "targetHandle": {
+            "id": "normalize_input",
+            "fieldName": "upstream",
+            "inputTypes": [
+              "Data"
+            ],
+            "type": "other"
+          }
+        }
+      },
+      {
+        "id": "edge-1",
+        "source": "normalize_input",
+        "target": "callcraft_router",
+        "sourceHandle": "{\u0153id\u0153: \u0153normalize_input\u0153, \u0153dataType\u0153: \u0153ChatCanvasStage\u0153, \u0153name\u0153: \u0153result\u0153, \u0153output_types\u0153: [\u0153Data\u0153]}",
+        "targetHandle": "{\u0153id\u0153: \u0153callcraft_router\u0153, \u0153fieldName\u0153: \u0153upstream\u0153, \u0153inputTypes\u0153: [\u0153Data\u0153], \u0153type\u0153: \u0153other\u0153}",
+        "data": {
+          "sourceHandle": {
+            "id": "normalize_input",
+            "dataType": "ChatCanvasStage",
+            "name": "result",
+            "output_types": [
+              "Data"
+            ]
+          },
+          "targetHandle": {
+            "id": "callcraft_router",
+            "fieldName": "upstream",
+            "inputTypes": [
+              "Data"
+            ],
+            "type": "other"
+          }
+        }
+      },
+      {
+        "id": "edge-2",
+        "source": "callcraft_router",
+        "target": "postgres_tools",
+        "sourceHandle": "{\u0153id\u0153: \u0153callcraft_router\u0153, \u0153dataType\u0153: \u0153ChatCanvasStage\u0153, \u0153name\u0153: \u0153result\u0153, \u0153output_types\u0153: [\u0153Data\u0153]}",
+        "targetHandle": "{\u0153id\u0153: \u0153postgres_tools\u0153, \u0153fieldName\u0153: \u0153upstream\u0153, \u0153inputTypes\u0153: [\u0153Data\u0153], \u0153type\u0153: \u0153other\u0153}",
+        "data": {
+          "sourceHandle": {
+            "id": "callcraft_router",
+            "dataType": "ChatCanvasStage",
+            "name": "result",
+            "output_types": [
+              "Data"
+            ]
+          },
+          "targetHandle": {
+            "id": "postgres_tools",
+            "fieldName": "upstream",
+            "inputTypes": [
+              "Data"
+            ],
+            "type": "other"
+          }
+        }
+      },
+      {
+        "id": "edge-3",
+        "source": "callcraft_router",
+        "target": "astra_retriever",
+        "sourceHandle": "{\u0153id\u0153: \u0153callcraft_router\u0153, \u0153dataType\u0153: \u0153ChatCanvasStage\u0153, \u0153name\u0153: \u0153result\u0153, \u0153output_types\u0153: [\u0153Data\u0153]}",
+        "targetHandle": "{\u0153id\u0153: \u0153astra_retriever\u0153, \u0153fieldName\u0153: \u0153upstream\u0153, \u0153inputTypes\u0153: [\u0153Data\u0153], \u0153type\u0153: \u0153other\u0153}",
+        "data": {
+          "sourceHandle": {
+            "id": "callcraft_router",
+            "dataType": "ChatCanvasStage",
+            "name": "result",
+            "output_types": [
+              "Data"
+            ]
+          },
+          "targetHandle": {
+            "id": "astra_retriever",
+            "fieldName": "upstream",
+            "inputTypes": [
+              "Data"
+            ],
+            "type": "other"
+          }
+        }
+      },
+      {
+        "id": "edge-4",
+        "source": "postgres_tools",
+        "target": "prompt_builder",
+        "sourceHandle": "{\u0153id\u0153: \u0153postgres_tools\u0153, \u0153dataType\u0153: \u0153ChatCanvasStage\u0153, \u0153name\u0153: \u0153result\u0153, \u0153output_types\u0153: [\u0153Data\u0153]}",
+        "targetHandle": "{\u0153id\u0153: \u0153prompt_builder\u0153, \u0153fieldName\u0153: \u0153upstream\u0153, \u0153inputTypes\u0153: [\u0153Data\u0153], \u0153type\u0153: \u0153other\u0153}",
+        "data": {
+          "sourceHandle": {
+            "id": "postgres_tools",
+            "dataType": "ChatCanvasStage",
+            "name": "result",
+            "output_types": [
+              "Data"
+            ]
+          },
+          "targetHandle": {
+            "id": "prompt_builder",
+            "fieldName": "upstream",
+            "inputTypes": [
+              "Data"
+            ],
+            "type": "other"
+          }
+        }
+      },
+      {
+        "id": "edge-5",
+        "source": "astra_retriever",
+        "target": "prompt_builder",
+        "sourceHandle": "{\u0153id\u0153: \u0153astra_retriever\u0153, \u0153dataType\u0153: \u0153ChatCanvasStage\u0153, \u0153name\u0153: \u0153result\u0153, \u0153output_types\u0153: [\u0153Data\u0153]}",
+        "targetHandle": "{\u0153id\u0153: \u0153prompt_builder\u0153, \u0153fieldName\u0153: \u0153upstream\u0153, \u0153inputTypes\u0153: [\u0153Data\u0153], \u0153type\u0153: \u0153other\u0153}",
+        "data": {
+          "sourceHandle": {
+            "id": "astra_retriever",
+            "dataType": "ChatCanvasStage",
+            "name": "result",
+            "output_types": [
+              "Data"
+            ]
+          },
+          "targetHandle": {
+            "id": "prompt_builder",
+            "fieldName": "upstream",
+            "inputTypes": [
+              "Data"
+            ],
+            "type": "other"
+          }
+        }
+      },
+      {
+        "id": "edge-6",
+        "source": "normalize_input",
+        "target": "prompt_builder",
+        "sourceHandle": "{\u0153id\u0153: \u0153normalize_input\u0153, \u0153dataType\u0153: \u0153ChatCanvasStage\u0153, \u0153name\u0153: \u0153result\u0153, \u0153output_types\u0153: [\u0153Data\u0153]}",
+        "targetHandle": "{\u0153id\u0153: \u0153prompt_builder\u0153, \u0153fieldName\u0153: \u0153upstream\u0153, \u0153inputTypes\u0153: [\u0153Data\u0153], \u0153type\u0153: \u0153other\u0153}",
+        "data": {
+          "sourceHandle": {
+            "id": "normalize_input",
+            "dataType": "ChatCanvasStage",
+            "name": "result",
+            "output_types": [
+              "Data"
+            ]
+          },
+          "targetHandle": {
+            "id": "prompt_builder",
+            "fieldName": "upstream",
+            "inputTypes": [
+              "Data"
+            ],
+            "type": "other"
+          }
+        }
+      },
+      {
+        "id": "edge-7",
+        "source": "prompt_builder",
+        "target": "ai_model",
+        "sourceHandle": "{\u0153id\u0153: \u0153prompt_builder\u0153, \u0153dataType\u0153: \u0153ChatCanvasStage\u0153, \u0153name\u0153: \u0153result\u0153, \u0153output_types\u0153: [\u0153Data\u0153]}",
+        "targetHandle": "{\u0153id\u0153: \u0153ai_model\u0153, \u0153fieldName\u0153: \u0153upstream\u0153, \u0153inputTypes\u0153: [\u0153Data\u0153], \u0153type\u0153: \u0153other\u0153}",
+        "data": {
+          "sourceHandle": {
+            "id": "prompt_builder",
+            "dataType": "ChatCanvasStage",
+            "name": "result",
+            "output_types": [
+              "Data"
+            ]
+          },
+          "targetHandle": {
+            "id": "ai_model",
+            "fieldName": "upstream",
+            "inputTypes": [
+              "Data"
+            ],
+            "type": "other"
+          }
+        }
+      },
+      {
+        "id": "edge-8",
+        "source": "ai_model",
+        "target": "response_parser",
+        "sourceHandle": "{\u0153id\u0153: \u0153ai_model\u0153, \u0153dataType\u0153: \u0153ChatCanvasStage\u0153, \u0153name\u0153: \u0153result\u0153, \u0153output_types\u0153: [\u0153Data\u0153]}",
+        "targetHandle": "{\u0153id\u0153: \u0153response_parser\u0153, \u0153fieldName\u0153: \u0153upstream\u0153, \u0153inputTypes\u0153: [\u0153Data\u0153], \u0153type\u0153: \u0153other\u0153}",
+        "data": {
+          "sourceHandle": {
+            "id": "ai_model",
+            "dataType": "ChatCanvasStage",
+            "name": "result",
+            "output_types": [
+              "Data"
+            ]
+          },
+          "targetHandle": {
+            "id": "response_parser",
+            "fieldName": "upstream",
+            "inputTypes": [
+              "Data"
+            ],
+            "type": "other"
+          }
+        }
+      },
+      {
+        "id": "edge-9",
+        "source": "response_parser",
+        "target": "tts",
+        "sourceHandle": "{\u0153id\u0153: \u0153response_parser\u0153, \u0153dataType\u0153: \u0153ChatCanvasStage\u0153, \u0153name\u0153: \u0153result\u0153, \u0153output_types\u0153: [\u0153Data\u0153]}",
+        "targetHandle": "{\u0153id\u0153: \u0153tts\u0153, \u0153fieldName\u0153: \u0153upstream\u0153, \u0153inputTypes\u0153: [\u0153Data\u0153], \u0153type\u0153: \u0153other\u0153}",
+        "data": {
+          "sourceHandle": {
+            "id": "response_parser",
+            "dataType": "ChatCanvasStage",
+            "name": "result",
+            "output_types": [
+              "Data"
+            ]
+          },
+          "targetHandle": {
+            "id": "tts",
+            "fieldName": "upstream",
+            "inputTypes": [
+              "Data"
+            ],
+            "type": "other"
+          }
+        }
+      },
+      {
+        "id": "edge-10",
+        "source": "response_parser",
+        "target": "background_dispatch",
+        "sourceHandle": "{\u0153id\u0153: \u0153response_parser\u0153, \u0153dataType\u0153: \u0153ChatCanvasStage\u0153, \u0153name\u0153: \u0153result\u0153, \u0153output_types\u0153: [\u0153Data\u0153]}",
+        "targetHandle": "{\u0153id\u0153: \u0153background_dispatch\u0153, \u0153fieldName\u0153: \u0153upstream\u0153, \u0153inputTypes\u0153: [\u0153Data\u0153], \u0153type\u0153: \u0153other\u0153}",
+        "data": {
+          "sourceHandle": {
+            "id": "response_parser",
+            "dataType": "ChatCanvasStage",
+            "name": "result",
+            "output_types": [
+              "Data"
+            ]
+          },
+          "targetHandle": {
+            "id": "background_dispatch",
+            "fieldName": "upstream",
+            "inputTypes": [
+              "Data"
+            ],
+            "type": "other"
+          }
+        }
+      },
+      {
+        "id": "edge-11",
+        "source": "response_parser",
+        "target": "chat_response",
+        "sourceHandle": "{\u0153id\u0153: \u0153response_parser\u0153, \u0153dataType\u0153: \u0153ChatCanvasStage\u0153, \u0153name\u0153: \u0153result\u0153, \u0153output_types\u0153: [\u0153Data\u0153]}",
+        "targetHandle": "{\u0153id\u0153: \u0153chat_response\u0153, \u0153fieldName\u0153: \u0153upstream\u0153, \u0153inputTypes\u0153: [\u0153Data\u0153], \u0153type\u0153: \u0153other\u0153}",
+        "data": {
+          "sourceHandle": {
+            "id": "response_parser",
+            "dataType": "ChatCanvasStage",
+            "name": "result",
+            "output_types": [
+              "Data"
+            ]
+          },
+          "targetHandle": {
+            "id": "chat_response",
+            "fieldName": "upstream",
+            "inputTypes": [
+              "Data"
+            ],
+            "type": "other"
+          }
+        }
+      },
+      {
+        "id": "edge-12",
+        "source": "tts",
+        "target": "chat_response",
+        "sourceHandle": "{\u0153id\u0153: \u0153tts\u0153, \u0153dataType\u0153: \u0153ChatCanvasStage\u0153, \u0153name\u0153: \u0153result\u0153, \u0153output_types\u0153: [\u0153Data\u0153]}",
+        "targetHandle": "{\u0153id\u0153: \u0153chat_response\u0153, \u0153fieldName\u0153: \u0153upstream\u0153, \u0153inputTypes\u0153: [\u0153Data\u0153], \u0153type\u0153: \u0153other\u0153}",
+        "data": {
+          "sourceHandle": {
+            "id": "tts",
+            "dataType": "ChatCanvasStage",
+            "name": "result",
+            "output_types": [
+              "Data"
+            ]
+          },
+          "targetHandle": {
+            "id": "chat_response",
+            "fieldName": "upstream",
+            "inputTypes": [
+              "Data"
+            ],
+            "type": "other"
+          }
+        }
+      },
+      {
+        "id": "edge-13",
+        "source": "background_dispatch",
+        "target": "chat_response",
+        "sourceHandle": "{\u0153id\u0153: \u0153background_dispatch\u0153, \u0153dataType\u0153: \u0153ChatCanvasStage\u0153, \u0153name\u0153: \u0153result\u0153, \u0153output_types\u0153: [\u0153Data\u0153]}",
+        "targetHandle": "{\u0153id\u0153: \u0153chat_response\u0153, \u0153fieldName\u0153: \u0153upstream\u0153, \u0153inputTypes\u0153: [\u0153Data\u0153], \u0153type\u0153: \u0153other\u0153}",
+        "data": {
+          "sourceHandle": {
+            "id": "background_dispatch",
+            "dataType": "ChatCanvasStage",
+            "name": "result",
+            "output_types": [
+              "Data"
+            ]
+          },
+          "targetHandle": {
+            "id": "chat_response",
+            "fieldName": "upstream",
+            "inputTypes": [
+              "Data"
+            ],
+            "type": "other"
+          }
+        }
+      }
+    ],
+    "viewport": {
+      "x": 0,
+      "y": 0,
+      "zoom": 0.6
+    }
+  },
+  "is_component": false
+}

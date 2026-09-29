@@ -94,7 +94,7 @@ async def run_worker() -> None:
         from temanbule.modules.knowledge.langflow_adapter import build_extraction_adapter
 
         try:
-            extractor = build_extraction_adapter(settings)
+            extractor = build_extraction_adapter(settings, session_factory)
         except ValueError as exc:
             logger.warning(
                 "extraction_adapter_unconfigured",

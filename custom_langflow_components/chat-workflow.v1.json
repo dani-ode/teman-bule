@@ -1,0 +1,92 @@
+{
+  "artifact_version": "1.0.0",
+  "artifact_kind": "langflow_application_workflow_design",
+  "status": "draft",
+  "purpose": "chat_turn",
+  "name": "Teman Bule - Chat Turn v1",
+  "description": "Synchronous, non-realtime application chat workflow. Backend resolves the active flow and supplies an authorized session snapshot; Langflow owns the business orchestration.",
+  "deployment": {
+    "execution_endpoint": "/api/v2/workflows",
+    "mode": "sync",
+    "input_component": "TemanBuleJsonInput",
+    "output_component": "TemanBuleChatResponse",
+    "not_a_webhook": true,
+    "secrets_policy": "No credentials, bearer tokens, or redeemable execution grants enter the canvas. Components obtain trusted credentials from the runtime broker."
+  },
+  "backend_contract": {
+    "registry_lookup": {
+      "flow_registry": "ai_flow_registry",
+      "where": "environment = current_environment AND purpose = 'chat_turn' AND status = 'active'",
+      "select": ["langflow_flow_id", "flow_version", "input_schema_version", "output_schema_version", "prompt_version", "required_capabilities", "tool_allowlist", "timeout_seconds"]
+    },
+    "tool_registry": {
+      "where": "environment = current_environment AND status = 'active' AND name IN (resolved tool names)",
+      "select": ["name", "callcraft_spec_id", "schema_version", "scope", "idempotency_policy", "timeout_seconds"]
+    },
+    "request_mapping": {
+      "flow_id": "ai_flow_registry.langflow_flow_id",
+      "input_value": "JSON.stringify(input)",
+      "session_id": "input.session.session_id",
+      "mode": "sync",
+      "output_ids": ["chat_response"]
+    }
+  },
+  "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["schema_version", "request_id", "purpose", "user", "session", "persona", "ai_configuration", "input", "policy"],
+    "properties": {
+      "schema_version": {"const": "3"},
+      "request_id": {"type": "string", "minLength": 1},
+      "traceparent": {"type": "string"},
+      "purpose": {"const": "chat_turn"},
+      "user": {"type": "object", "required": ["user_id"], "properties": {"user_id": {"type": "string"}, "locale": {"type": "string"}}, "additionalProperties": false},
+      "session": {"type": "object", "required": ["session_id", "runtime_snapshot_id"], "properties": {"session_id": {"type": "string"}, "runtime_snapshot_id": {"type": "string"}, "history": {"type": "array"}, "category": {"type": "string"}}, "additionalProperties": true},
+      "persona": {"type": "string", "enum": ["elean", "willy"]},
+      "ai_configuration": {"type": "object", "required": ["model_configuration_id"], "properties": {"model_configuration_id": {"type": "string"}, "capability": {"type": "string"}, "payer": {"type": "string"}}, "additionalProperties": false},
+      "input": {"type": "object", "required": ["modality"], "properties": {"modality": {"type": "string", "enum": ["text", "audio"]}, "text": {"type": ["string", "null"]}, "audio_media_id": {"type": ["string", "null"]}, "audio_url": {"type": ["string", "null"]}, "audio_base64": {"type": ["string", "null"]}, "audio_mime_type": {"type": ["string", "null"]}}, "additionalProperties": false},
+      "policy": {"type": "object", "required": ["tool_allowlist", "retrieval_scopes", "output_schema"], "properties": {"tool_allowlist": {"type": "array", "items": {"type": "string"}}, "retrieval_scopes": {"type": "array", "items": {"type": "string"}}, "output_schema": {"type": "string"}}, "additionalProperties": true}
+    }
+  },
+  "nodes": [
+    {"id": "json_input", "type": "custom", "component": "TemanBuleJsonInput", "label": "Application JSON Input", "config": {"schema": "input_schema", "reject_unknown_fields": true}},
+    {"id": "normalize_input", "type": "custom", "component": "TemanBuleChatInputNormalizer", "label": "Normalize Text/Audio", "config": {"audio_source_precedence": ["audio_media_id", "audio_url", "audio_base64"], "transcription_required_for_audio": true}},
+    {"id": "callcraft_router", "type": "custom", "component": "CallcraftAPIComponent", "label": "CallCraft Tool Router", "config": {"spec_id_source": "tool_registry.callcraft_spec_id", "allow_manual_spec_id": false, "purpose": "chat_turn", "tool_allowlist_source": "input.policy.tool_allowlist"}},
+    {"id": "postgres_tools", "type": "custom", "component": "TemanBulePostgresReadTools", "label": "PostgreSQL Authorized Reads", "config": {"operations": ["get_user_profile", "get_session_context", "get_learning_progress", "get_vocabulary"], "scope_source": "input.policy.retrieval_scopes", "read_only": true}},
+    {"id": "astra_retriever", "type": "custom", "component": "TemanBuleAstraRetriever", "label": "Astra RAG", "config": {"collections_source": "runtime_snapshot", "top_k": 8, "filter_user_private_data": true}},
+    {"id": "prompt_builder", "type": "custom", "component": "TemanBuleChatPromptBuilder", "label": "Persona and Context Prompt", "config": {"persona_source": "input.persona", "system_prompt_source": "prompt_version", "untrusted_content_is_data": true}},
+    {"id": "ai_model", "type": "custom", "component": "TemanBuleConfiguredAIModel", "label": "Configured AI Model", "config": {"model_source": "input.ai_configuration.model_configuration_id", "credential_source": "runtime_broker", "stream": false}},
+    {"id": "response_parser", "type": "custom", "component": "TemanBuleChatResponseParser", "label": "Validate Structured Response", "config": {"schema_source": "input.policy.output_schema", "required": ["response_text", "citations", "tool_outcomes"]}},
+    {"id": "tts", "type": "custom", "component": "TemanBuleElevenLabsTTS", "label": "ElevenLabs TTS", "config": {"voice_source": "input.persona", "voices": {"elean": "runtime_registry", "willy": "runtime_registry"}, "run_parallel": true}},
+    {"id": "background_dispatch", "type": "custom", "component": "TemanBuleLangflowDispatch", "label": "Dispatch Chat Background", "config": {"purpose": "chat_background", "flow_id_source": "ai_flow_registry", "mode": "background", "wait_for_completion": false, "idempotency_key": "input.request_id"}},
+    {"id": "chat_response", "type": "custom", "component": "TemanBuleChatResponse", "label": "Chat Response", "config": {"include": ["response_text", "audio", "citations", "tool_outcomes", "background_dispatch_ref"], "single_terminal_output": true}}
+  ],
+  "edges": [
+    {"source": "json_input", "target": "normalize_input"},
+    {"source": "normalize_input", "target": "callcraft_router"},
+    {"source": "callcraft_router", "target": "postgres_tools"},
+    {"source": "callcraft_router", "target": "astra_retriever"},
+    {"source": "postgres_tools", "target": "prompt_builder"},
+    {"source": "astra_retriever", "target": "prompt_builder"},
+    {"source": "normalize_input", "target": "prompt_builder"},
+    {"source": "prompt_builder", "target": "ai_model"},
+    {"source": "ai_model", "target": "response_parser"},
+    {"source": "response_parser", "target": "tts"},
+    {"source": "response_parser", "target": "background_dispatch"},
+    {"source": "response_parser", "target": "chat_response"},
+    {"source": "tts", "target": "chat_response"},
+    {"source": "background_dispatch", "target": "chat_response"}
+  ],
+  "output_schema": {
+    "type": "object",
+    "required": ["schema_version", "request_id", "status", "response_text", "citations", "tool_outcomes"],
+    "properties": {"schema_version": {"const": "1"}, "request_id": {"type": "string"}, "status": {"const": "completed"}, "response_text": {"type": "string"}, "audio": {"type": ["object", "null"]}, "citations": {"type": "array"}, "tool_outcomes": {"type": "array"}, "background_dispatch_ref": {"type": ["string", "null"]}}
+  },
+  "runtime_invariants": [
+    "CallCraft extracts/selects tool arguments; it does not directly mutate PostgreSQL or Astra.",
+    "PostgreSQL reads are authorization-scoped to the backend-issued session/user context.",
+    "TTS failure must not invalidate a successful text response unless policy requires audio.",
+    "Background dispatch acknowledgement is not background completion.",
+    "The backend persists the final response and owns durable retry/reconciliation."
+  ]
+}

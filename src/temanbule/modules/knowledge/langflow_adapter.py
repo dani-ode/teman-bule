@@ -16,11 +16,14 @@ Kontrak (langflow-flows.md, services.py ExtractionPort):
 from __future__ import annotations
 
 import json
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from temanbule.modules.catalog.flows import FlowBinding, resolve_flow
 from temanbule.platform.errors import DependencyUnavailableError
 from temanbule.platform.settings import Settings
 
@@ -32,9 +35,6 @@ class LangflowExtractionConfig:
     base_url: str
     api_key: str
     run_path: str
-    flow_id_conversation_ingestion: str
-    flow_id_user_fact_extraction: str = ""
-    flow_id_learning_assessment: str = ""
     timeout_seconds: float = 60.0
     connect_timeout_seconds: float = 5.0
     max_connections: int = 50
@@ -49,15 +49,6 @@ class LangflowExtractionConfig:
             return f"{base}{path}/{flow_id}"
         raise ValueError("LANGFLOW_RUN_PATH tidak didukung")
 
-    def flow_id_for_purpose(self, purpose: str) -> str:
-        """Resolve flow ID per purpose background; kosong bila belum dikonfigurasi."""
-        mapping = {
-            "conversation_ingestion": self.flow_id_conversation_ingestion,
-            "user_fact_extraction": self.flow_id_user_fact_extraction,
-            "learning_assessment": self.flow_id_learning_assessment,
-        }
-        return mapping.get(purpose, "")
-
 
 class LangflowExtractionAdapter:
     """ExtractionPort konkret ke flow conversation_ingestion via Langflow.
@@ -71,10 +62,12 @@ class LangflowExtractionAdapter:
     def __init__(
         self,
         config: LangflowExtractionConfig,
+        resolver: Callable[[str, str], Awaitable[FlowBinding]],
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._config = config
         self._transport = transport
+        self._resolver = resolver
 
     async def extract(
         self,
@@ -106,9 +99,11 @@ class LangflowExtractionAdapter:
             "session_id": session_id,
             "tweaks": {},
         }
+        binding = await self._resolver("conversation_ingestion", flow_version)
         body = await self._run_flow(
-            flow_id=self._config.flow_id_conversation_ingestion,
+            flow_id=binding.flow_id,
             payload=payload,
+            timeout_seconds=binding.timeout_ms / 1000,
         )
         text = self._extract_output_text(body)
         return self._parse_extraction_text(text)
@@ -122,16 +117,17 @@ class LangflowExtractionAdapter:
     ) -> dict[str, Any]:
         """Jalankan flow background per purpose (facts/assessment); return dict.
 
-        Flow ID di-resolve dari config per purpose. Kegagalan vendor →
+        Flow ID di-resolve dari registry per purpose/version. Kegagalan vendor →
         DependencyUnavailableError (job tetap nonterminal); output non-JSON
         dikembalikan sebagai ``{"raw_text": ...}`` agar tetap canonical.
         """
-        flow_id = self._config.flow_id_for_purpose(purpose)
-        if not flow_id.strip():
+        flow_version = input_data.get("flow_version")
+        if not isinstance(flow_version, str) or not flow_version.strip():
             raise DependencyUnavailableError(
-                f"Flow Langflow untuk purpose '{purpose}' belum dikonfigurasi.",
-                code="FLOW_NOT_CONFIGURED",
+                "Job Langflow harus menyertakan flow_version.",
+                code="FLOW_VERSION_MISSING",
             )
+        binding = await self._resolver(purpose, flow_version)
         payload: dict[str, Any] = {
             "input_value": json.dumps(input_data, sort_keys=True),
             "input_type": "chat",
@@ -139,19 +135,29 @@ class LangflowExtractionAdapter:
             "session_id": session_id,
             "tweaks": {},
         }
-        body = await self._run_flow(flow_id=flow_id, payload=payload)
+        body = await self._run_flow(
+            flow_id=binding.flow_id, payload=payload,
+            timeout_seconds=binding.timeout_ms / 1000,
+        )
         text = self._extract_output_text(body)
         return self._parse_extraction_text(text)
 
     # --- HTTP ------------------------------------------------------------
 
-    async def _run_flow(self, *, flow_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    async def _run_flow(
+        self, *, flow_id: str, payload: dict[str, Any], timeout_seconds: float,
+    ) -> dict[str, Any]:
         """POST run endpoint; mapping error teruniform tanpa echo body vendor."""
         workflow_v2 = self._config.run_path.strip("/") == "api/v2/workflows"
         if workflow_v2:
+            # The deployed v2 schema forbids the legacy v1 type selectors.
+            payload = {
+                key: value for key, value in payload.items()
+                if key not in {"input_type", "output_type"}
+            }
             payload = {**payload, "flow_id": flow_id, "mode": "sync"}
         timeout = httpx.Timeout(
-            self._config.timeout_seconds,
+            min(timeout_seconds, self._config.timeout_seconds),
             connect=self._config.connect_timeout_seconds,
         )
         limits = httpx.Limits(
@@ -208,7 +214,8 @@ class LangflowExtractionAdapter:
             )
         if workflow_v2 and (
             body.get("status") != "completed"
-            or body.get("has_errors") is not False
+            or body.get("has_errors", False) is not False
+            or bool(body.get("errors"))
             or not isinstance(body.get("output"), dict)
         ):
             raise DependencyUnavailableError(
@@ -228,12 +235,12 @@ class LangflowExtractionAdapter:
         """
         if "output" in body:
             output = body["output"]
-            text = output.get("text") if isinstance(output, dict) else None
-            if not isinstance(text, str) or not text.strip():
+            workflow_text = output.get("text") if isinstance(output, dict) else None
+            if not isinstance(workflow_text, str) or not workflow_text.strip():
                 raise DependencyUnavailableError(
                     "Langflow workflow tanpa teks output.", code="LANGFLOW_INVALID_RESPONSE"
                 )
-            return text
+            return workflow_text
         outputs = body.get("outputs")
         if not isinstance(outputs, list) or not outputs:
             raise DependencyUnavailableError(
@@ -285,15 +292,14 @@ class LangflowExtractionAdapter:
         return {"raw_text": text}
 
 
-def build_extraction_adapter(settings: Settings) -> LangflowExtractionAdapter:
+def build_extraction_adapter(
+    settings: Settings, session_factory: async_sessionmaker[AsyncSession],
+) -> LangflowExtractionAdapter:
     """Bangun adapter dari settings trusted; ValueError bila config wajib kosong."""
     required_strings = {
         "LANGFLOW_BASE_URL": settings.langflow_base_url,
         "LANGFLOW_API_KEY": settings.langflow_api_key,
         "LANGFLOW_RUN_PATH": settings.langflow_run_path,
-        "LANGFLOW_FLOW_ID_CONVERSATION_INGESTION": (
-            settings.langflow_flow_id_conversation_ingestion
-        ),
     }
     missing = [name for name, value in required_strings.items() if not value.strip()]
     if missing:
@@ -301,18 +307,21 @@ def build_extraction_adapter(settings: Settings) -> LangflowExtractionAdapter:
             "Konfigurasi Langflow extraction adapter tidak lengkap: "
             + ", ".join(sorted(missing))
         )
+    async def resolver(purpose: str, flow_version: str) -> FlowBinding:
+        async with session_factory() as session:
+            return await resolve_flow(
+                session, environment=settings.app_env,
+                purpose=purpose, flow_version=flow_version,
+            )
+
     return LangflowExtractionAdapter(
         LangflowExtractionConfig(
             base_url=settings.langflow_base_url,
             api_key=settings.langflow_api_key,
             run_path=settings.langflow_run_path,
-            flow_id_conversation_ingestion=(
-                settings.langflow_flow_id_conversation_ingestion
-            ),
-            flow_id_user_fact_extraction=settings.langflow_flow_id_user_fact_extraction,
-            flow_id_learning_assessment=settings.langflow_flow_id_learning_assessment,
             timeout_seconds=float(settings.langflow_timeout_seconds),
             connect_timeout_seconds=float(settings.langflow_connect_timeout_seconds),
             max_connections=settings.langflow_max_connections,
-        )
+        ),
+        resolver=resolver,
     )

@@ -6,9 +6,7 @@ Kontrak api-events.md:
 - GET .../{id} dan .../{id}/messages owner-scoped (404 cross-owner)
 - POST .../{id}:complete → 200
 
-Respons agent AI belum dihasilkan di sini: invocation Langflow/CallCraft
-menunggu DEC-10/11 dan SPK-01/02. Endpoint ini menyimpan input user secara
-durable (prasyarat ingestion); tidak ada fake agent reply.
+Chat resolves the active PostgreSQL registry entry and calls Langflow.
 """
 
 from __future__ import annotations
@@ -18,7 +16,8 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
-from temanbule.api.deps import CurrentUser, SessionDep
+from temanbule.api.deps import CurrentUser, SessionDep, SettingsDep
+from temanbule.modules.conversations.chat import ChatService
 from temanbule.modules.conversations.models import ConversationSession, PracticeCategory
 from temanbule.modules.conversations.services import ConversationService
 
@@ -39,7 +38,7 @@ class SessionResponse(BaseModel):
 
 class CreateMessageRequest(BaseModel):
     text: str = Field(min_length=1, max_length=8000)
-    client_message_id: str | None = Field(default=None, max_length=128)
+    client_message_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class MessageResponse(BaseModel):
@@ -83,28 +82,19 @@ async def get_session(
     return _session_response(conversation)
 
 
-@router.post("/sessions/{session_id}/messages", response_model=MessageResponse, status_code=201)
+@router.post("/sessions/{session_id}/messages", status_code=201)
 async def create_message(
     session_id: str,
     body: CreateMessageRequest,
     current_user: CurrentUser,
     session: SessionDep,
-) -> MessageResponse:
-    service = ConversationService(session)
-    message = await service.append_user_message(
+    settings: SettingsDep,
+) -> dict[str, object]:
+    return await ChatService(session, settings).send(
         user_id=current_user.id,
         session_id=session_id,
         text=body.text,
         client_key=body.client_message_id,
-    )
-    await session.commit()
-    return MessageResponse(
-        message_id=message.id,
-        session_id=message.session_id,
-        role=message.role,
-        sequence=message.sequence,
-        terminal_state=message.terminal_state,
-        created_at=message.created_at.isoformat(),
     )
 
 
