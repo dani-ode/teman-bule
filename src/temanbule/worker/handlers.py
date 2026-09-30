@@ -161,3 +161,14 @@ EVENT_HANDLERS: dict[str, Any] = {
     "conversation.session_completed.v1": handle_session_completed,
     "conversation.extraction_committed.v1": handle_extraction_committed,
 }
+
+
+async def handle_auth_email_requested_bound(session: AsyncSession, payload: dict[str, Any]) -> None:
+    """Binding settings untuk handler email; dispatcher memanggil tanpa settings."""
+    from temanbule.platform.settings import load_settings
+    from temanbule.worker.auth_email_handler import handle_auth_email_requested
+
+    await handle_auth_email_requested(session, payload, load_settings(validate=False))
+
+
+EVENT_HANDLERS["auth.email_requested.v1"] = handle_auth_email_requested_bound

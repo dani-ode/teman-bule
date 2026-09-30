@@ -8,7 +8,6 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
 from temanbule.api.deps import CurrentUser, SessionDep
-from temanbule.modules.learning.models import CourseUnit, Lesson
 from temanbule.modules.learning.services import LearningService
 
 router = APIRouter(prefix="/v1", tags=["learning"])
@@ -80,14 +79,14 @@ async def get_course_structure(course_id: str, session: SessionDep) -> CourseStr
                 position=unit.position,
                 lessons=[
                     LessonResponse(
-                        lesson_id=l.id,
-                        slug=l.slug,
-                        title=l.title,
-                        level=l.level,
-                        position=l.position,
-                        status=l.status,
+                        lesson_id=lesson.id,
+                        slug=lesson.slug,
+                        title=lesson.title,
+                        level=lesson.level,
+                        position=lesson.position,
+                        status=lesson.status,
                     )
-                    for l in lessons
+                    for lesson in lessons
                 ],
             )
         )

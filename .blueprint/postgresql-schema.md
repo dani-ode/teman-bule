@@ -64,7 +64,7 @@ Wallet caches et ledger wajib satu transaksi; database trigger/privilege mencega
 
 | Table | Kolom/constraint minimum |
 |---|---|
-| `practice_categories` | id, code UNIQUE, title, status, sort_order |
+| `practice_categories` | id, code UNIQUE, title, description nullable, image_key nullable (S3/MinIO object key), status, sort_order |
 | `conversation_sessions` | id, user_id, kind chat/call/podcast, state, runtime_snapshot_id, started_at, ended_at |
 | `practice_sessions` | session_id PK/FK, category_id, agent_version_id |
 | `conversation_messages` | id, session_id, owner_user_id, role, agent_version_id nullable, modality, text, media_id nullable, sequence, client_key nullable, generated/delivered spans, terminal_state, created_at; UNIQUE(session,sequence), UNIQUE(session,client_key) |

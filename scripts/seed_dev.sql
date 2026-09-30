@@ -21,14 +21,17 @@ ON CONFLICT (plan_code, revision) DO NOTHING;
 UPDATE plans SET policy_version = 1 WHERE code IN ('vip','advance');
 
 -- ===== Practice categories (seed set dari product-requirements.md) =====
-INSERT INTO practice_categories (id, code, title, status, sort_order) VALUES
-  ('01M3DEVCATDAILY00000000001', 'daily_conversation', 'Daily Conversation', 'published', 1),
-  ('01M3DEVCATGRAMMAR000000001', 'grammar', 'Grammar', 'published', 2),
-  ('01M3DEVCATPRONOUN000000001', 'pronunciation', 'Pronunciation', 'published', 3),
-  ('01M3DEVCATJOBINT0000000001', 'job_interview', 'Job Interview', 'published', 4),
-  ('01M3DEVCATTRAVEL0000000001', 'travel', 'Travel', 'published', 5),
-  ('01M3DEVCATFREETALK00000001', 'free_talk', 'Free Talk', 'published', 6)
-ON CONFLICT (code) DO NOTHING;
+-- image_key menunjuk ke object di bucket S3/MinIO (folder "categories/").
+INSERT INTO practice_categories (id, code, title, description, image_key, status, sort_order) VALUES
+  ('01M3DEVCATDAILY00000000001', 'daily_conversation', 'Daily Conversation', 'Praktik percakapan sehari-hari: sapaan, small talk, dan situasi umum.', 'categories/daily_conversation.jpeg', 'published', 1),
+  ('01M3DEVCATGRAMMAR000000001', 'grammar', 'Grammar', 'Latihan tata bahasa Inggris lewat contoh nyata dan koreksi langsung.', 'categories/grammar.jpeg', 'published', 2),
+  ('01M3DEVCATPRONOUN000000001', 'pronunciation', 'Pronunciation', 'Perbaiki pelafalan dan intonasi agar terdengar lebih natural.', 'categories/pronunciation.jpeg', 'published', 3),
+  ('01M3DEVCATJOBINT0000000001', 'job_interview', 'Job Interview', 'Simulasi wawancara kerja bahasa Inggris dengan umpan balik terarah.', 'categories/job_interview.jpeg', 'published', 4),
+  ('01M3DEVCATTRAVEL0000000001', 'travel', 'Travel', 'Percakapan praktis untuk perjalanan: bandara, hotel, dan restoran.', 'categories/travel.jpeg', 'published', 5),
+  ('01M3DEVCATFREETALK00000001', 'free_talk', 'Free Talk', 'Ngobrol bebas tentang topik apa pun untuk membangun kelancaran.', 'categories/free_talk.jpeg', 'published', 6)
+ON CONFLICT (code) DO UPDATE SET
+  description = EXCLUDED.description,
+  image_key = EXCLUDED.image_key;
 
 -- ===== Agents Elean & Willy + published versions =====
 INSERT INTO agents (id, code, display_name, status, active_version_id)

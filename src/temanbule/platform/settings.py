@@ -97,9 +97,10 @@ class Settings(BaseSettings):
     auth_cookie_secure: bool = False
     auth_cookie_samesite: str = "lax"
     auth_cookie_domain: str = ""
-    auth_frontend_success_url: str = "http://localhost:3000/profile"
-    auth_frontend_error_url: str = "http://localhost:3000/login"
-    auth_password_min_length: int = 12
+    auth_frontend_success_url: str = "temanbule://profile"
+    auth_frontend_error_url: str = "temanbule://login"
+    auth_app_deep_link_scheme: str = "temanbule"
+    auth_password_min_length: int = 8
     auth_argon2_memory_kib: int = 65536
     auth_argon2_time_cost: int = 3
     auth_argon2_parallelism: int = 1

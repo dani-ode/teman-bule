@@ -12,7 +12,6 @@ from temanbule.api.deps import CurrentUser, SessionDep
 from temanbule.modules.conversations.assessments import AssessmentService
 from temanbule.modules.conversations.facts import FactsService
 from temanbule.modules.identity.repository import IdentityRepository
-from temanbule.platform.errors import ConflictError
 
 router = APIRouter(prefix="/v1/me", tags=["profile"])
 

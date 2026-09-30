@@ -163,6 +163,9 @@ class Agent(Base, TimestampMixin):
     id: Mapped[str] = mapped_column(String(26), primary_key=True)
     code: Mapped[str] = mapped_column(String(40), unique=True)  # elean | willy
     display_name: Mapped[str] = mapped_column(String(80))
+    # Object key foto profil di bucket S3/MinIO (folder "model_profile/");
+    # URL dibangun di lapisan API agar rotasi bucket/endpoint tanpa migrasi data.
+    profile_image_key: Mapped[str | None] = mapped_column(String(255))
     status: Mapped[str] = mapped_column(String(20), default="draft")
     active_version_id: Mapped[str | None] = mapped_column(String(26))
 

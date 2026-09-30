@@ -20,6 +20,7 @@ from temanbule.api.deps import CurrentUser, SessionDep, SettingsDep
 from temanbule.modules.conversations.chat import ChatService
 from temanbule.modules.conversations.models import ConversationSession, PracticeCategory
 from temanbule.modules.conversations.services import ConversationService
+from temanbule.platform.settings import Settings
 
 router = APIRouter(prefix="/v1/practice", tags=["practice"])
 
@@ -138,12 +139,27 @@ class CategoryResponse(BaseModel):
     category_id: str
     code: str
     title: str
+    description: str | None
+    image_url: str | None
     sort_order: int
+
+
+def _category_image_url(settings: Settings, image_key: str | None) -> str | None:
+    """Bangun URL publik MinIO (path-style) dari image_key kategori.
+
+    Bucket media development memiliki kebijakan public-read, sehingga klien
+    dapat memuat gambar langsung tanpa presigned URL yang kedaluwarsa.
+    """
+    if not image_key:
+        return None
+    endpoint = settings.s3_endpoint_url.rstrip("/")
+    return f"{endpoint}/{settings.s3_bucket}/{image_key.lstrip('/')}"
 
 
 @router.get("/categories", response_model=list[CategoryResponse])
 async def list_categories(
     session: SessionDep,
+    settings: SettingsDep,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> list[CategoryResponse]:
     """Daftar kategori practice published (public)."""
@@ -166,6 +182,8 @@ async def list_categories(
             category_id=c.id,
             code=c.code,
             title=c.title,
+            description=c.description,
+            image_url=_category_image_url(settings, c.image_key),
             sort_order=c.sort_order,
         )
         for c in rows

@@ -28,6 +28,8 @@ class PracticeCategory(Base, TimestampMixin):
     id: Mapped[str] = mapped_column(String(26), primary_key=True)
     code: Mapped[str] = mapped_column(String(40), unique=True)
     title: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str | None] = mapped_column(String(500))
+    image_key: Mapped[str | None] = mapped_column(String(255))
     status: Mapped[str] = mapped_column(String(20), default="draft")
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 

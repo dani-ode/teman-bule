@@ -22,7 +22,6 @@ from temanbule.modules.billing.payments import (
     XenditCheckoutPort,
 )
 from temanbule.platform.errors import (
-    DependencyUnavailableError,
     FeatureUnavailableError,
     UnauthorizedError,
     ValidationError,

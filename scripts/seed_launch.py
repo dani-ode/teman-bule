@@ -150,7 +150,8 @@ def main() -> None:
         agent_id = identifier("launch:agent:" + code)
         version_id = identifier("launch:persona:" + code)
         voice_id = identifier("launch:voice:" + code)
-        sql += f"INSERT INTO agents(id,code,display_name,status) VALUES ({literal(agent_id)},{literal(code)},{literal(code.title())},'active') ON CONFLICT(code) DO NOTHING;\n"
+        sql += f"INSERT INTO agents(id,code,display_name,profile_image_key,status) VALUES ({literal(agent_id)},{literal(code)},{literal(code.title())},{literal('model_profile/' + code + '.jpeg')},'active') ON CONFLICT(code) DO NOTHING;\n"
+        sql += f"UPDATE agents SET profile_image_key={literal('model_profile/' + code + '.jpeg')} WHERE code={literal(code)} AND profile_image_key IS NULL;\n"
         sql += f"""
 DO $$ DECLARE aid varchar(26); BEGIN
 SELECT id INTO STRICT aid FROM agents WHERE code={literal(code)};

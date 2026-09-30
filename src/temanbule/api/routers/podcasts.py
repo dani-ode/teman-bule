@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from temanbule.api.deps import CurrentUser, SessionDep
 from temanbule.modules.identity.deletion import DeletionService
-from temanbule.modules.podcasts.models import Podcast, PodcastScriptVersion, PodcastSegment
+from temanbule.modules.podcasts.models import Podcast
 from temanbule.modules.podcasts.services import PodcastService
 
 router = APIRouter(prefix="/v1", tags=["podcasts"])
