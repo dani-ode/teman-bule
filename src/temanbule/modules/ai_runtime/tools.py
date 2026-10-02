@@ -127,9 +127,21 @@ class ToolExecutionService:
         owner_user_id = grant.owner_user_id
 
         # Validasi argumen ketat sesuai katalog sebelum dedupe/eksekusi.
+        # Kegagalan validasi → status failed dengan stable code (bukan raise),
+        # sesuai kontrak "no fake success" (callcraft-tools.md).
         validator = TOOL_VALIDATORS.get(tool_name)
         if validator is not None:
-            validator(arguments)
+            try:
+                validator(arguments)
+            except AppError as exc:
+                return ToolResult(
+                    execution_id=new_ulid(),
+                    status="failed",
+                    result=None,
+                    error_code=exc.code,
+                    error_message=exc.message,
+                    replayed=False,
+                )
 
         # Mutasi WAJIB idempotency key (callcraft-tools.md); read tidak.
         is_read_tool = tool_name in {

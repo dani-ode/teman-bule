@@ -12,9 +12,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from temanbule.modules.catalog.models import Agent, AgentVersion
 from temanbule.modules.catalog.services import RuntimeSnapshotBuilder
 from temanbule.modules.conversations.models import (
     ConversationMessage,
@@ -78,6 +79,31 @@ class ConversationService:
         await self.session.flush()
         return conversation
 
+    async def get_practice_session(self, *, session_id: str) -> PracticeSession:
+        """Ambil baris practice_sessions (category_id + agent_version_id) per session."""
+        practice = (
+            await self.session.execute(
+                select(PracticeSession).where(PracticeSession.session_id == session_id)
+            )
+        ).scalar_one_or_none()
+        if practice is None:
+            raise NotFoundError("Practice session tidak ditemukan.")
+        return practice
+
+    async def get_agent_code_for_session(self, *, session_id: str) -> str:
+        """Resolve agent_code via practice_sessions → agent_versions → agents."""
+        code = (
+            await self.session.execute(
+                select(Agent.code)
+                .join(AgentVersion, AgentVersion.agent_id == Agent.id)
+                .join(PracticeSession, PracticeSession.agent_version_id == AgentVersion.id)
+                .where(PracticeSession.session_id == session_id)
+            )
+        ).scalar_one_or_none()
+        if code is None:
+            raise NotFoundError("Agent session tidak ditemukan.")
+        return code
+
     async def append_user_message(
         self,
         *,
@@ -129,6 +155,7 @@ class ConversationService:
         agent_version_id: str,
         text: str,
         terminal_state: str = "completed",
+        modality: str = "text",
     ) -> ConversationMessage:
         """Simpan respons agent setelah invocation terverifikasi."""
         message = ConversationMessage(
@@ -138,6 +165,7 @@ class ConversationService:
             role=ROLE_AGENT,
             agent_version_id=agent_version_id,
             text=text,
+            modality=modality,
             sequence=await self._next_sequence(session_id),
             terminal_state=terminal_state,
             generated_at=datetime.now(UTC),
@@ -213,6 +241,67 @@ class ConversationService:
 
     async def get_owned_session(self, *, user_id: str, session_id: str) -> ConversationSession:
         return await self._owned_session(user_id, session_id)
+
+    async def delete_session(self, *, user_id: str, session_id: str) -> None:
+        """Hapus session beserta seluruh pesan terkait (CASCADE).
+
+        Ownership ketat: session privat, cross-owner = 404 (bukan 403 bocor).
+        Menghapus session juga menghapus messages via FK CASCADE.
+        """
+        conversation = await self._owned_session(user_id, session_id, for_update=True)
+        await self.session.execute(
+            delete(ConversationMessage).where(
+                ConversationMessage.session_id == session_id
+            )
+        )
+        await self.session.execute(
+            delete(PracticeSession).where(
+                PracticeSession.session_id == session_id
+            )
+        )
+        await self.session.execute(
+            delete(ConversationSession).where(
+                ConversationSession.id == conversation.id
+            )
+        )
+        await self.session.flush()
+
+    async def list_practice_sessions(
+        self,
+        *,
+        user_id: str,
+        category_id: str | None = None,
+        agent_code: str | None = None,
+        state: str | None = None,
+        limit: int = 50,
+    ) -> list[tuple[ConversationSession, str, str]]:
+        """Daftar session chat milik user; filter kategori/agent/state opsional.
+
+        Mengembalikan tuple (session, category_id, agent_code) agar klien dapat
+        menampilkan konteks tanpa query tambahan per baris. Agent code di-resolve
+        via join agent_versions → agents. Ownership selalu ditegakkan (user_id).
+        """
+        stmt = (
+            select(ConversationSession, PracticeSession.category_id, Agent.code)
+            .join(PracticeSession, PracticeSession.session_id == ConversationSession.id)
+            .join(AgentVersion, AgentVersion.id == PracticeSession.agent_version_id)
+            .join(Agent, Agent.id == AgentVersion.agent_id)
+            .where(
+                ConversationSession.user_id == user_id,
+                ConversationSession.kind == "chat",
+            )
+            .order_by(ConversationSession.started_at.desc())
+            .limit(min(limit, 100))
+        )
+        if category_id is not None:
+            stmt = stmt.where(PracticeSession.category_id == category_id)
+        if agent_code is not None:
+            stmt = stmt.where(Agent.code == agent_code)
+        if state is not None:
+            stmt = stmt.where(ConversationSession.state == state)
+        rows = (await self.session.execute(stmt)).all()
+        return [(conversation, cat_id, code) for conversation, cat_id, code in rows]
+
 
     async def _next_sequence(self, session_id: str) -> int:
         """Sequence berikutnya; aman untuk concurrent append dalam transaksi."""

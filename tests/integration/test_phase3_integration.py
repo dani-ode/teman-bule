@@ -71,19 +71,7 @@ async def _base_fixture(db: AsyncSession) -> dict[str, str]:
     db.add_all([user, category])
     await db.flush()
 
-    agent = (
-        await db.execute(select(Agent).where(Agent.code == "elean"))
-    ).scalar_one_or_none()
-    if agent is None:
-        agent = Agent(id=new_ulid(), code="elean", display_name="Elean", status="active")
-        db.add(agent)
-        await db.flush()
-    if agent.active_version_id is None:
-        version = AgentVersion(id=new_ulid(), agent_id=agent.id, revision=1, status="published")
-        db.add(version)
-        await db.flush()
-        agent.active_version_id = version.id
-        await db.flush()
+    await _ensure_agent(db, "elean", "Elean")
 
     existing_plan = (
         await db.execute(select(Plan).where(Plan.code == "vip"))
@@ -102,6 +90,24 @@ async def _base_fixture(db: AsyncSession) -> dict[str, str]:
 
     await PlanSelectionService(db).select_plan(user_id=user.id, plan_code="vip")
     return {"user_id": user.id, "category_id": category.id, "agent_code": "elean"}
+
+
+async def _ensure_agent(db: AsyncSession, code: str, display_name: str) -> Agent:
+    """Idempotent: pastikan agent punya versi aktif published."""
+    agent = (
+        await db.execute(select(Agent).where(Agent.code == code))
+    ).scalar_one_or_none()
+    if agent is None:
+        agent = Agent(id=new_ulid(), code=code, display_name=display_name, status="active")
+        db.add(agent)
+        await db.flush()
+    if agent.active_version_id is None:
+        version = AgentVersion(id=new_ulid(), agent_id=agent.id, revision=1, status="published")
+        db.add(version)
+        await db.flush()
+        agent.active_version_id = version.id
+        await db.flush()
+    return agent
 
 
 def _tools(db: AsyncSession) -> ToolExecutionService:
@@ -196,6 +202,69 @@ async def test_cross_owner_session_access_denied(db: AsyncSession) -> None:
         )
     with pytest.raises(NotFoundError):
         await service.list_messages(user_id=other_user.id, session_id=conversation.id)
+
+
+@requires_db
+async def test_list_practice_sessions_filters(db: AsyncSession) -> None:
+    """list_practice_sessions: filter kategori/agent/state + owner-scoped + urut terbaru."""
+    fx = await _base_fixture(db)
+    await _ensure_agent(db, "willy", "Willy")
+    service = ConversationService(db)
+
+    # Kategori kedua untuk membedakan filter category_id.
+    category_b = PracticeCategory(
+        id=new_ulid(), code=f"cat-{new_ulid()[-10:]}", title="Business", status="published"
+    )
+    db.add(category_b)
+    await db.flush()
+
+    # Tiga session milik user: elean/catA, willy/catA, elean/catB.
+    s_elean_a = await service.start_practice_session(
+        user_id=fx["user_id"], agent_code="elean", category_id=fx["category_id"]
+    )
+    s_willy_a = await service.start_practice_session(
+        user_id=fx["user_id"], agent_code="willy", category_id=fx["category_id"]
+    )
+    s_elean_b = await service.start_practice_session(
+        user_id=fx["user_id"], agent_code="elean", category_id=category_b.id
+    )
+    # Session milik user lain: tidak boleh ikut (owner-scoped).
+    other = User(id=new_ulid(), normalized_email=f"other-{new_ulid()[-10:]}@example.com")
+    db.add(other)
+    await db.flush()
+    from temanbule.modules.catalog.plan_selection import PlanSelectionService
+
+    await PlanSelectionService(db).select_plan(user_id=other.id, plan_code="vip")
+    s_other = await service.start_practice_session(
+        user_id=other.id, agent_code="elean", category_id=fx["category_id"]
+    )
+
+    # Tanpa filter: hanya 3 milik user, urut started_at desc (terakhir dibuat duluan).
+    all_rows = await service.list_practice_sessions(user_id=fx["user_id"])
+    assert [c.id for c, _, _ in all_rows] == [s_elean_b.id, s_willy_a.id, s_elean_a.id]
+    assert s_other.id not in [c.id for c, _, _ in all_rows]
+
+    # Filter agent_code: resolve elean/willy via join.
+    elean_rows = await service.list_practice_sessions(user_id=fx["user_id"], agent_code="elean")
+    assert {c.id for c, _, _ in elean_rows} == {s_elean_a.id, s_elean_b.id}
+    assert all(code == "elean" for _, _, code in elean_rows)
+
+    # Filter category_id.
+    cat_b_rows = await service.list_practice_sessions(user_id=fx["user_id"], category_id=category_b.id)
+    assert [c.id for c, _, _ in cat_b_rows] == [s_elean_b.id]
+
+    # Filter gabungan agent + kategori.
+    combo = await service.list_practice_sessions(
+        user_id=fx["user_id"], agent_code="elean", category_id=fx["category_id"]
+    )
+    assert [c.id for c, _, _ in combo] == [s_elean_a.id]
+
+    # Filter state setelah complete.
+    await service.complete_session(user_id=fx["user_id"], session_id=s_elean_a.id)
+    completed = await service.list_practice_sessions(user_id=fx["user_id"], state="completed")
+    assert [c.id for c, _, _ in completed] == [s_elean_a.id]
+    active = await service.list_practice_sessions(user_id=fx["user_id"], state="active")
+    assert {c.id for c, _, _ in active} == {s_elean_b.id, s_willy_a.id}
 
 
 @requires_db
