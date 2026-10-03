@@ -54,53 +54,57 @@ class ChatService:
 
         first_message: dict[str, Any] | None = None
         try:
-            if not self.settings.feature_ai_enabled:
-                raise FeatureUnavailableError("AI sedang dinonaktifkan.")
-            binding = await resolve_flow(
-                self.session,
-                environment=self.settings.app_env,
-                purpose="chat_session_create",
-            )
-            context = await chat_context(
-                self.session, conversation.runtime_snapshot_id, user_id
-            )
-            envelope = {
-                "schema_version": binding.input_schema_version,
-                "request_id": new_ulid(),
-                "purpose": "chat_session_create",
-                "user": {"user_id": user_id},
-                "session": {
-                    "session_id": conversation.id,
-                    "runtime_snapshot_id": conversation.runtime_snapshot_id,
-                },
-                "persona": context["persona"],
-                "ai_configuration": context["ai_configuration"],
-                "input": {"agent_code": agent_code, "category_id": category_id},
-            }
-            result = await self.session_create_adapter.run(binding, envelope)
-            message = await conversations.append_agent_message(
-                session_id=conversation.id,
-                owner_user_id=user_id,
-                agent_version_id=practice.agent_version_id,
-                text=result.response_text,
-                # Chat mostly audio: greeting disimpan sebagai modality 'audio'
-                # bila flow mengembalikan URL audio S3/MinIO hasil TTS.
-                modality="audio" if result.audio_url else "text",
-            )
-            first_message = {
-                "message_id": message.id,
-                "session_id": message.session_id,
-                "role": message.role,
-                "text": message.text,
-                "modality": message.modality,
-                "audio_url": result.audio_url,
-                "audio_duration_ms": result.audio_duration_ms,
-                "sequence": message.sequence,
-                "terminal_state": message.terminal_state,
-                "created_at": message.created_at.isoformat(),
-            }
+            # begin_nested() = SAVEPOINT: bila greeting gagal, hanya perubahan
+            # di dalam blok ini yang di-rollback; session + practice (di-flush
+            # sebelumnya) TETAP ada, sehingga router.commit() menyimpan session
+            # dan room chat tidak 404.
+            async with self.session.begin_nested():
+                if not self.settings.feature_ai_enabled:
+                    raise FeatureUnavailableError("AI sedang dinonaktifkan.")
+                binding = await resolve_flow(
+                    self.session,
+                    environment=self.settings.app_env,
+                    purpose="chat_session_create",
+                )
+                context = await chat_context(
+                    self.session, conversation.runtime_snapshot_id, user_id
+                )
+                envelope = {
+                    "schema_version": binding.input_schema_version,
+                    "request_id": new_ulid(),
+                    "purpose": "chat_session_create",
+                    "user": {"user_id": user_id},
+                    "session": {
+                        "session_id": conversation.id,
+                        "runtime_snapshot_id": conversation.runtime_snapshot_id,
+                    },
+                    "persona": context["persona"],
+                    "ai_configuration": context["ai_configuration"],
+                    "input": {"agent_code": agent_code, "category_id": category_id},
+                }
+                result = await self.session_create_adapter.run(binding, envelope)
+                message = await conversations.append_agent_message(
+                    session_id=conversation.id,
+                    owner_user_id=user_id,
+                    agent_version_id=practice.agent_version_id,
+                    text=result.response_text,
+                    # Chat mostly audio: greeting disimpan sebagai modality 'audio'
+                    # bila flow mengembalikan URL audio S3/MinIO hasil TTS.
+                    modality="audio" if result.audio_url else "text",
+                )
+                first_message = {
+                    "message_id": message.id,
+                    "session_id": message.session_id,
+                    "role": message.role,
+                    "text": message.text,
+                    "modality": message.modality,
+                    "audio_url": result.audio_url,
+                    "audio_duration_ms": result.audio_duration_ms,
+                    "sequence": message.sequence,
+                    "terminal_state": message.terminal_state,
+                    "created_at": message.created_at.isoformat(),
+                }
         except AppError as exc:
-            await self.session.rollback()
             logger.warning(
                 "Session-create greeting skipped (session kept): %s", exc.code
             )
