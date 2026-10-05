@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     app_trusted_proxy_ips: str = "127.0.0.1"
     app_enable_docs: bool = True
     app_max_request_bytes: int = 1048576
+    app_persona_base_dir: str = ".blueprint/personas"
 
     # --- Feature flags ---
     feature_ai_enabled: bool = True
@@ -207,6 +208,7 @@ class Settings(BaseSettings):
     livekit_api_key: str = ""
     livekit_api_secret: str = ""
     livekit_token_ttl_seconds: int = 300
+    livekit_agent_name: str = "temanbule-call-agent"
     tts_provider: str = "elevenlabs"
     tts_api_key: str = ""
     tts_model: str = ""
@@ -415,6 +417,7 @@ class Settings(BaseSettings):
                 "LIVEKIT_URL",
                 "LIVEKIT_API_KEY",
                 "LIVEKIT_API_SECRET",
+                "LIVEKIT_AGENT_NAME",
                 "TTS_API_KEY",
                 "TTS_MODEL",
                 "TTS_VOICE_ID_ELEAN",
@@ -545,6 +548,39 @@ class Settings(BaseSettings):
         if not 0.0 < float(self.otel_traces_sampler_arg) <= 1.0:
             problems.append("OTEL_TRACES_SAMPLER_ARG harus dalam (0, 1]")
 
+        if problems:
+            raise ConfigurationError(problems)
+
+    def provider_base_url(self, provider_code: str) -> str:
+        """Base URL kanonik provider dari settings; raise bila tidak dikenal."""
+        if provider_code == "gemini":
+            return self.gemini_base_url
+        if provider_code == "openai":
+            return self.openai_base_url
+        raise ConfigurationError([f"Provider tidak dikenal: {provider_code}"])
+
+    def validate_for_realtime_worker(self) -> None:
+        """Validasi konfigurasi realtime worker (proses terpisah dari API).
+
+        Worker menjalankan pipeline VAD/STT/LLM/TTS sehingga memerlukan
+        seluruh syarat FEATURE_REALTIME_CALL_ENABLED plus konfigurasi
+        platform STT/LLM dan feature flag itu sendiri aktif.
+        """
+        if not self.feature_realtime_call_enabled:
+            raise ConfigurationError(
+                ["FEATURE_REALTIME_CALL_ENABLED wajib true untuk realtime worker"]
+            )
+        self.validate_for_api()
+        problems: list[str] = []
+        for name in (
+            "M2M_REALTIME_SERVICE_TOKEN",
+            "VIP_STT_PROVIDER",
+            "VIP_STT_MODEL",
+            "VIP_LLM_PROVIDER",
+            "VIP_LLM_MODEL",
+        ):
+            if _is_blank(getattr(self, name.lower())):
+                problems.append(name)
         if problems:
             raise ConfigurationError(problems)
 

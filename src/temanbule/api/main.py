@@ -19,6 +19,7 @@ from temanbule.api.routers import byok as byok_router
 from temanbule.api.routers import calls as calls_router
 from temanbule.api.routers import google_auth as google_auth_router
 from temanbule.api.routers import health as health_router
+from temanbule.api.routers import internal_calls as internal_calls_router
 from temanbule.api.routers import internal_runtime as internal_runtime_router
 from temanbule.api.routers import learning as learning_router
 from temanbule.api.routers import media as media_router
@@ -31,6 +32,7 @@ from temanbule.api.routers import vocabulary as vocabulary_router
 from temanbule.api.routers import webhooks as webhooks_router
 from temanbule.modules.billing.xendit_adapter import build_xendit_checkout
 from temanbule.modules.calls.livekit_adapter import build_livekit_token_factory
+from temanbule.modules.calls.livekit_dispatch import build_livekit_agent_dispatcher
 from temanbule.modules.catalog.credential_verifier import build_credential_verifier
 from temanbule.modules.media.s3_adapter import (
     build_download_url_factory,
@@ -91,6 +93,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.media_download_url_factory = build_download_url_factory(settings)
     if settings.feature_realtime_call_enabled:
         app.state.livekit_token_factory = build_livekit_token_factory(settings)
+        app.state.livekit_agent_dispatch = build_livekit_agent_dispatcher(settings)
     if settings.feature_billing_enabled:
         app.state.xendit_checkout = build_xendit_checkout(settings)
 
@@ -154,6 +157,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(podcasts_router.router)
     app.include_router(webhooks_router.router)
     app.include_router(internal_runtime_router.router)
+    app.include_router(internal_calls_router.router)
 
     return app
 
