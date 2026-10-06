@@ -21,6 +21,27 @@ body:
     }
   }
 
+Workflow API (background execution, same v2 endpoint — NOT v1):
+path: "/api/v2/workflows"
+method: POST
+body:
+  {
+    "flow_id": "<flow_id>",
+    "mode": "background",
+    "tweaks": {
+    "<component_id>": {
+        "<key>": "<value>"
+      }
+    }
+  }
+
+Background response returns `job_id` with `links` for polling:
+- status/progress: GET "/api/v2/workflows?job_id=<job_id>"
+- events: GET "/api/v2/workflows/<job_id>/events"
+- stop: POST "/api/v2/workflows/stop"
+
+Acceptance (`job_id`) is not completion; poll status until terminal state.
+
 Webhook trigger (separate Langflow v1 endpoint):
 path: "/api/v1/webhook/<flow_id>"
 method: POST

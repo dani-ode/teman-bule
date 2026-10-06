@@ -40,6 +40,51 @@ Input envelope di bawah adalah kontrak aplikasi, bukan field top-level vendor ya
 
 Mode `background` Langflow tidak menggantikan outbox/SQL jobs aplikasi. Acceptance atau `job_id` bukan completion. Timeout setelah dispatch dapat berarti outcome unknown; lakukan lookup/reconciliation sebelum menjalankan ulang. Verifikasi restart recovery, polling, streaming, cancellation dan mapping error di DEC-10.
 
+Mode `background` tetap memakai endpoint yang sama, `POST /api/v2/workflows` (bukan API v1). Contoh request:
+
+```http
+POST http://localhost:7860/api/v2/workflows
+```
+
+```json
+{
+  "flow_id": "ebe688b6-b693-44e2-9fb0-47edc1b378bf",
+  "mode": "background",
+  "tweaks": {
+    "Webhook-iGh25": {
+      "data": "{}"
+    }
+  }
+}
+```
+
+Response acceptance berisi `job_id` beserta links untuk polling:
+
+```json
+{
+  "job_id": "ab1cbdd2-ae44-42a7-b162-3d310ae87433",
+  "flow_id": "ebe688b6-b693-44e2-9fb0-47edc1b378bf",
+  "object": "job",
+  "created_timestamp": "2026-10-06T06:17:49.453751+00:00",
+  "status": "queued",
+  "links": {
+    "status": "/api/v2/workflows?job_id=ab1cbdd2-ae44-42a7-b162-3d310ae87433",
+    "events": "/api/v2/workflows/ab1cbdd2-ae44-42a7-b162-3d310ae87433/events",
+    "stop": "/api/v2/workflows/stop"
+  },
+  "errors": [],
+  "globals": {}
+}
+```
+
+Dari response tersebut, `job_id` dipakai untuk memantau progress:
+
+- Status/progress: `GET /api/v2/workflows?job_id=<job_id>` (dari `links.status`).
+- Event stream job: `GET /api/v2/workflows/<job_id>/events` (dari `links.events`).
+- Stop/cancel: `POST /api/v2/workflows/stop` dengan `job_id` (dari `links.stop`).
+
+Simpan `job_id` pada `background_job_attempts.vendor_job_id` dan poll hingga status terminal (`completed`/`failed`/dibatalkan) sebelum menyatakan attempt selesai.
+
 Referensi vendor: [Workflow API quickstart](https://docs.langflow.org/workflow-api-quickstart). OpenAPI dan versi deployment yang benar menjadi acuan implementasi.
 
 ## Workflow Wajib
