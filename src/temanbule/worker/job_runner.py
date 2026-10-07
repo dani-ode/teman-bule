@@ -38,10 +38,16 @@ from temanbule.modules.knowledge.services import (
     KnowledgeService,
 )
 from temanbule.modules.reliability.models import BackgroundJob, BackgroundJobAttempt
-from temanbule.platform.errors import DependencyUnavailableError
+from temanbule.platform.errors import DependencyUnavailableError, ValidationError
 from temanbule.platform.security import new_ulid
 from temanbule.platform.settings import Settings
-from temanbule.worker.handlers import JOB_PURPOSE_ASSESSMENT, JOB_PURPOSE_FACT_EXTRACTION
+from temanbule.worker.handlers import (
+    JOB_PURPOSE_ASSESSMENT,
+    JOB_PURPOSE_FACT_EXTRACTION,
+    JOB_PURPOSE_PODCAST_INGESTION,
+    PODCAST_INGESTION_MAX_POLLS,
+    PODCAST_INGESTION_POLL_INTERVAL_SECONDS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +73,7 @@ class JobRunner:
         session_factory: async_sessionmaker[AsyncSession],
         extractor: LangflowExtractionAdapter | None,
         embedder: DualEmbeddingAdapter | None,
+        podcast_adapter: Any | None = None,
         lease_seconds: int = 60,
         max_attempts: int = 5,
     ) -> None:
@@ -74,6 +81,7 @@ class JobRunner:
         self._session_factory = session_factory
         self._extractor = extractor
         self._embedder = embedder
+        self._podcast_adapter = podcast_adapter
         self._lease_seconds = lease_seconds
         self._max_attempts = max_attempts
 
@@ -207,6 +215,13 @@ class JobRunner:
                     purpose=job.purpose,
                     payload=payload,
                 )
+            elif job.purpose == JOB_PURPOSE_PODCAST_INGESTION:
+                if self._podcast_adapter is None:
+                    raise DependencyUnavailableError(
+                        "Podcast adapter belum terkonfigurasi.",
+                        code="PODCAST_ADAPTER_MISSING",
+                    )
+                await self._run_podcast_ingestion(session=session, job=job, payload=payload)
             else:
                 raise DependencyUnavailableError(
                     f"Purpose job tidak dikenal: {job.purpose}",
@@ -373,6 +388,109 @@ class JobRunner:
             flow_version=flow_version,
         )
 
+    # --- Podcast document ingestion (Langflow background) -------------------
+
+    async def _run_podcast_ingestion(
+        self,
+        *,
+        session: AsyncSession,
+        job: BackgroundJob,
+        payload: dict[str, Any],
+    ) -> None:
+        """Dua langkah idempoten: dispatch ke Langflow lalu poll sampai terminal.
+
+        - ``dispatch``: trigger flow mode background; vendor ``job_id`` disimpan
+          di checkpoint job dan attempt (reconciliation, langflow-flows.md:86).
+        - ``poll``: cek status terminal; masih berjalan → DependencyUnavailableError
+          ``PODCAST_INGESTION_RUNNING`` agar runner menjadwalkan ulang dengan
+          backoff (job tetap nonterminal, tanpa dispatch ganda).
+        """
+        from temanbule.modules.catalog.flows import resolve_flow
+        from temanbule.modules.podcasts.services import PodcastService
+
+        if self._podcast_adapter is None:  # guard untuk type narrowing
+            raise DependencyUnavailableError(
+                "Podcast adapter belum terkonfigurasi.", code="PODCAST_ADAPTER_MISSING"
+            )
+        adapter = self._podcast_adapter
+        step = str(payload.get("step", "dispatch"))
+        checkpoint = json.loads(job.checkpoint) if job.checkpoint else {}
+
+        binding = await resolve_flow(
+            session,
+            environment=self._settings.app_env,
+            purpose=JOB_PURPOSE_PODCAST_INGESTION,
+            flow_version=payload["flow_version"],
+        )
+
+        if step == "dispatch":
+            langflow_job_id = await adapter.trigger_document_ingestion(
+                binding,
+                {
+                    "schema_version": binding.input_schema_version,
+                    "request_id": new_ulid(),
+                    "purpose": JOB_PURPOSE_PODCAST_INGESTION,
+                    "user": {"user_id": payload["owner_user_id"]},
+                    "podcast": {
+                        "podcast_id": payload["podcast_id"],
+                        "source_version_id": payload["source_version_id"],
+                    },
+                    "source": {
+                        "media_id": payload["media_id"],
+                        "storage_key": payload["storage_key"],
+                        "checksum": payload["checksum"],
+                    },
+                },
+            )
+            payload["step"] = "poll"
+            job.payload = json.dumps(payload, sort_keys=True)
+            job.checkpoint = json.dumps(
+                {"langflow_job_id": langflow_job_id, "poll_count": 0}, sort_keys=True
+            )
+            # Retry deterministik untuk menulis vendor_job_id pada attempt
+            # dilakukan runner via checkpoint; job tetap sukses pada poll berikut.
+            job.state = JOB_STATE_PENDING
+            job.run_after = datetime.now(UTC) + timedelta(
+                seconds=PODCAST_INGESTION_POLL_INTERVAL_SECONDS
+            )
+            return
+
+        # step == "poll"
+        langflow_job_id = checkpoint.get("langflow_job_id")
+        if not isinstance(langflow_job_id, str) or not langflow_job_id:
+            raise ValidationError("Checkpoint ingestion podcast tanpa langflow_job_id.")
+        try:
+            output = await adapter.poll_document_ingestion(
+                job_id=langflow_job_id, timeout_ms=binding.timeout_ms
+            )
+        except DependencyUnavailableError as exc:
+            if exc.code == "PODCAST_INGESTION_FAILED":
+                # Terminal failure di vendor: tandai source/podcast gagal permanen.
+                await PodcastService(session).mark_source_failed(
+                    source_version_id=payload["source_version_id"]
+                )
+                raise ValidationError("Ingestion podcast gagal di Langflow.") from exc
+            if exc.code == "PODCAST_INGESTION_RUNNING":
+                poll_count = int(checkpoint.get("poll_count", 0)) + 1
+                if poll_count > PODCAST_INGESTION_MAX_POLLS:
+                    await PodcastService(session).mark_source_failed(
+                        source_version_id=payload["source_version_id"]
+                    )
+                    raise ValidationError(
+                        "Ingestion podcast melewati batas waktu poll."
+                    ) from exc
+                job.checkpoint = json.dumps(
+                    {"langflow_job_id": langflow_job_id, "poll_count": poll_count},
+                    sort_keys=True,
+                )
+            raise
+        page_count = output["page_count"]
+        await PodcastService(session).apply_ingestion_result(
+            source_version_id=payload["source_version_id"],
+            page_count=page_count,
+            langflow_job_id=langflow_job_id,
+        )
+
     # --- Finalize ---------------------------------------------------------
 
     async def _finalize(
@@ -411,10 +529,13 @@ class JobRunner:
                         "job_dead_letter",
                         extra={"job_id": job.id, "purpose": job.purpose},
                     )
-                else:
+                elif job.state == JOB_STATE_RUNNING:
+                    # Processor belum menjadwalkan dirinya; backoff default.
                     job.state = JOB_STATE_PENDING
                     delay = _RETRY_BASE_DELAY_SECONDS * job.attempt_count
                     job.run_after = datetime.now(UTC) + timedelta(seconds=delay)
+                # else: processor sudah mengatur state/run_after sendiri
+                # (mis. dispatch/poll ingestion podcast dengan interval tetap).
             else:  # permanent failure
                 job.state = JOB_STATE_FAILED
             await session.commit()
@@ -455,6 +576,7 @@ async def run_job_loop(
     session_factory: async_sessionmaker[AsyncSession],
     extractor: LangflowExtractionAdapter | None,
     embedder: DualEmbeddingAdapter | None,
+    podcast_adapter: Any | None = None,
     shutdown: asyncio.Event,
     poll_interval_seconds: float = 2.0,
 ) -> None:
@@ -464,6 +586,7 @@ async def run_job_loop(
         session_factory=session_factory,
         extractor=extractor,
         embedder=embedder,
+        podcast_adapter=podcast_adapter,
         lease_seconds=settings.realtime_lease_ttl_seconds or 60,
         max_attempts=settings.embedding_max_attempts or 5,
     )

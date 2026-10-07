@@ -110,6 +110,13 @@ async def run_worker() -> None:
                 "embedding_adapter_unconfigured",
                 extra={"error_code": "EMBEDDING_CONFIG_INCOMPLETE", "detail": str(exc)},
             )
+    # Adapter podcast untuk ingestion dokumen (Langflow background). Job runner
+    # gagal eksplisit per job bila adapter tidak terpasang saat dibutuhkan.
+    podcast_adapter = None
+    if settings.feature_podcast_enabled and settings.langflow_api_key:
+        from temanbule.modules.podcasts.langflow_adapter import LangflowPodcastAdapter
+
+        podcast_adapter = LangflowPodcastAdapter(settings)
 
     from temanbule.worker.job_runner import run_job_loop
 
@@ -122,6 +129,7 @@ async def run_worker() -> None:
             session_factory=session_factory,
             extractor=extractor,
             embedder=embedder,
+            podcast_adapter=podcast_adapter,
             shutdown=shutdown,
         )
     )

@@ -28,8 +28,78 @@ INGESTION_FLOW_VERSION = "conv-ing.v1"
 INGESTION_RANGE_SIZE = 50
 JOB_PURPOSE_FACT_EXTRACTION = "user_fact_extraction"
 JOB_PURPOSE_ASSESSMENT = "learning_assessment"
+JOB_PURPOSE_PODCAST_INGESTION = "podcast_document_ingestion"
 FACTS_FLOW_VERSION = "fact-ext.v1"
 ASSESSMENT_FLOW_VERSION = "assessment.v1"
+PODCAST_INGESTION_FLOW_VERSION = "podcast-ing.v1"
+
+# Interval poll ulang job Langflow background (detik dari sekarang).
+PODCAST_INGESTION_POLL_INTERVAL_SECONDS = 10
+PODCAST_INGESTION_MAX_POLLS = 180  # ≈ 30 menit batas ingestion dokumen
+
+
+async def handle_podcast_source_uploaded(session: AsyncSession, payload: dict[str, Any]) -> None:
+    """podcast.source_uploaded.v1 → dispatch ingestion Langflow (background).
+
+    Membuat SATU SQL job per (source_version, flow_version) — dedupe_key
+    mencegah dispatch ganda pada delivery ulang event. Job membawa langkah
+    ``dispatch`` (trigger Langflow, simpan vendor job_id) lalu ``poll``
+    berkala sampai terminal; kedua langkah idempoten sehingga retry aman.
+    """
+    from temanbule.modules.podcasts.models import Podcast, PodcastSourceVersion
+
+    podcast_id = str(payload.get("podcast_id", ""))
+    source_version_id = str(payload.get("source_version_id", ""))
+    owner_user_id = str(payload.get("owner_user_id", ""))
+    media_id = str(payload.get("media_id", ""))
+    storage_key = str(payload.get("storage_key", ""))
+    checksum = str(payload.get("checksum", ""))
+    if not podcast_id or not source_version_id or not owner_user_id or not media_id:
+        raise NotFoundError("Payload event podcast tidak lengkap.")
+
+    source = (
+        await session.execute(
+            select(PodcastSourceVersion).where(PodcastSourceVersion.id == source_version_id)
+        )
+    ).scalar_one_or_none()
+    podcast = (
+        await session.execute(select(Podcast).where(Podcast.id == podcast_id))
+    ).scalar_one_or_none()
+    if source is None or podcast is None or podcast.user_id != owner_user_id:
+        raise NotFoundError("Podcast source tidak ditemukan.")
+    if source.parse_status in {"parsed", "failed"}:
+        return  # sudah terminal; tidak ada dispatch baru
+
+    dedupe_key = f"podcast-ingest:{source_version_id}:{PODCAST_INGESTION_FLOW_VERSION}"
+    existing = (
+        await session.execute(
+            select(BackgroundJob.id).where(BackgroundJob.dedupe_key == dedupe_key)
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return
+    session.add(
+        BackgroundJob(
+            id=new_ulid(),
+            dedupe_key=dedupe_key,
+            purpose=JOB_PURPOSE_PODCAST_INGESTION,
+            run_after=datetime.now(UTC),
+            payload=json.dumps(
+                {
+                    "step": "dispatch",
+                    "podcast_id": podcast_id,
+                    "source_version_id": source_version_id,
+                    "owner_user_id": owner_user_id,
+                    "media_id": media_id,
+                    "storage_key": storage_key,
+                    "checksum": checksum,
+                    "flow_version": PODCAST_INGESTION_FLOW_VERSION,
+                },
+                sort_keys=True,
+            ),
+        )
+    )
+    await session.flush()
 
 
 async def handle_extraction_committed(session: AsyncSession, payload: dict[str, Any]) -> None:
@@ -160,6 +230,7 @@ async def handle_session_completed(session: AsyncSession, payload: dict[str, Any
 EVENT_HANDLERS: dict[str, Any] = {
     "conversation.session_completed.v1": handle_session_completed,
     "conversation.extraction_committed.v1": handle_extraction_committed,
+    "podcast.source_uploaded.v1": handle_podcast_source_uploaded,
 }
 
 

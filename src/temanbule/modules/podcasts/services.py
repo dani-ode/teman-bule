@@ -23,9 +23,14 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from temanbule.modules.catalog.flows import resolve_flow
 from temanbule.modules.catalog.models import Agent, AgentVersion
-from temanbule.modules.catalog.services import RuntimeSnapshotBuilder
+from temanbule.modules.catalog.services import CatalogService, RuntimeSnapshotBuilder
 from temanbule.modules.media.models import MediaObject
+from temanbule.modules.podcasts.langflow_adapter import (
+    LangflowPodcastAdapter,
+    PodcastScriptResult,
+)
 from temanbule.modules.podcasts.models import (
     Podcast,
     PodcastAudioCache,
@@ -34,8 +39,10 @@ from temanbule.modules.podcasts.models import (
     PodcastSegment,
     PodcastSourceVersion,
 )
+from temanbule.modules.reliability.outbox import record_outbox_event
 from temanbule.platform.errors import ConflictError, NotFoundError, ValidationError
 from temanbule.platform.security import new_ulid, sha256_hex
+from temanbule.platform.settings import Settings
 
 SCRIPT_READY = "ready"
 SCRIPT_DRAFT = "draft"
@@ -46,11 +53,17 @@ PLAYBACK_INTERRUPTED = "interrupted"
 
 MAX_INTERRUPTION_BRANCHES = 10
 
+# Purpose flow podcast (registry ai_flow_registry per environment).
+PURPOSE_DOCUMENT_INGESTION = "podcast_document_ingestion"
+PURPOSE_SCRIPT_GENERATION = "podcast_script_generation"
+
 
 class PodcastService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, settings: Settings | None = None) -> None:
         self.session = session
+        self.settings = settings
         self.snapshots = RuntimeSnapshotBuilder(session)
+        self.catalog = CatalogService(session)
 
     async def create_podcast(self, *, user_id: str, title: str) -> Podcast:
         if not title.strip():
@@ -100,6 +113,22 @@ class PodcastService:
         self.session.add(source)
         podcast.current_source_version_id = source.id
         podcast.state = "source_processing"
+        # Outbox event atomik: worker mendispatch ingestion Langflow (background).
+        record_outbox_event(
+            self.session,
+            aggregate_type="podcast_source",
+            aggregate_id=source.id,
+            aggregate_version=source.revision,
+            event_type="podcast.source_uploaded.v1",
+            payload={
+                "podcast_id": podcast.id,
+                "source_version_id": source.id,
+                "owner_user_id": user_id,
+                "media_id": media.id,
+                "storage_key": media.storage_key,
+                "checksum": media.checksum,
+            },
+        )
         await self.session.flush()
         return source
 
@@ -129,6 +158,65 @@ class PodcastService:
         podcast.state = "source_ready"
         await self.session.flush()
         return source
+
+    async def apply_ingestion_result(
+        self,
+        *,
+        source_version_id: str,
+        page_count: int,
+        langflow_job_id: str | None = None,
+    ) -> PodcastSourceVersion:
+        """Finalisasi ingestion: tandai parsed, simpan vendor job_id, event selesai.
+
+        Dipanggil worker setelah job Langflow terminal completed. Idempoten:
+        source yang sudah parsed dikembalikan apa adanya.
+        """
+        source = await self.mark_source_parsed(
+            source_version_id=source_version_id, page_count=page_count
+        )
+        if langflow_job_id is not None:
+            podcast = (
+                await self.session.execute(
+                    select(Podcast).where(Podcast.id == source.podcast_id).with_for_update()
+                )
+            ).scalar_one()
+            podcast.generation_job_id = langflow_job_id
+        record_outbox_event(
+            self.session,
+            aggregate_type="podcast_source",
+            aggregate_id=source.id,
+            aggregate_version=source.revision,
+            event_type="podcast.source_processed.v1",
+            payload={
+                "podcast_id": source.podcast_id,
+                "source_version_id": source.id,
+                "page_count": page_count,
+            },
+        )
+        await self.session.flush()
+        return source
+
+    async def mark_source_failed(self, *, source_version_id: str) -> None:
+        """Tandai ingestion gagal permanen (job Langflow terminal failed)."""
+        source = (
+            await self.session.execute(
+                select(PodcastSourceVersion)
+                .where(PodcastSourceVersion.id == source_version_id)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if source is None:
+            raise NotFoundError("Source version tidak ditemukan.")
+        if source.parse_status == "parsed":
+            return
+        source.parse_status = "failed"
+        podcast = (
+            await self.session.execute(
+                select(Podcast).where(Podcast.id == source.podcast_id).with_for_update()
+            )
+        ).scalar_one()
+        podcast.state = "failed"
+        await self.session.flush()
 
     async def create_script_version(
         self,
@@ -298,6 +386,157 @@ class PodcastService:
         podcast.state = "script_ready"
         podcast.current_script_version_id = script.id
         podcast.generation_job_id = None
+        await self.session.flush()
+        return script
+
+    async def generate_script_and_start_playback(
+        self,
+        *,
+        user_id: str,
+        podcast_id: str,
+        target_duration_seconds: int,
+        lease_owner: str,
+        deadline_seconds: int,
+        adapter: LangflowPodcastAdapter,
+    ) -> tuple[PodcastScriptVersion, PodcastPlayback]:
+        """Play = generate script baru (sync) lalu playback baru; 1 script = 1 session.
+
+        Script TIDAK dipakai ulang lintas klik play: setiap klik men-generate
+        script version baru lewat flow ``podcast_script_generation`` (mode sync)
+        lalu membuat playback + conversation session baru yang menguncinya.
+        Kegagalan vendor → DependencyUnavailableError; tidak ada script palsu.
+        """
+        if self.settings is None:
+            raise ConflictError(
+                "PodcastService memerlukan settings untuk script generation.",
+                code="SETTINGS_REQUIRED",
+            )
+        podcast = await self._owned_podcast(user_id, podcast_id, for_update=True)
+        source_id = podcast.current_source_version_id
+        if source_id is None:
+            raise ConflictError(
+                "Podcast belum punya source dokumen.",
+                code="SOURCE_MISSING",
+            )
+        source = (
+            await self.session.execute(
+                select(PodcastSourceVersion).where(
+                    PodcastSourceVersion.id == source_id,
+                    PodcastSourceVersion.podcast_id == podcast_id,
+                )
+            )
+        ).scalar_one()
+        if source.parse_status != "parsed":
+            raise ConflictError(
+                "Dokumen masih diproses; cek status ingestion.",
+                code="SOURCE_NOT_PARSED",
+            )
+        if target_duration_seconds <= 0:
+            raise ValidationError("target_duration_seconds harus positif.")
+
+        snapshot = await self.snapshots.build_for_user(user_id=user_id, agent_code="elean")
+        binding = await resolve_flow(
+            self.session,
+            environment=self.settings.app_env,
+            purpose=PURPOSE_SCRIPT_GENERATION,
+        )
+        request_id = new_ulid()
+        envelope = {
+            "schema_version": binding.input_schema_version,
+            "request_id": request_id,
+            "purpose": PURPOSE_SCRIPT_GENERATION,
+            "user": {"user_id": user_id},
+            "podcast": {
+                "podcast_id": podcast.id,
+                "source_version_id": source.id,
+                "media_id": source.media_id,
+                "page_count": source.page_count,
+            },
+            "session": {"runtime_snapshot_id": snapshot.id},
+            "input": {"target_duration_seconds": target_duration_seconds},
+        }
+        result = await adapter.run_script_generation(binding, envelope)
+        script = await self._persist_generated_script(
+            podcast=podcast,
+            source=source,
+            snapshot_id=snapshot.id,
+            result=result,
+            target_duration_seconds=target_duration_seconds,
+        )
+        playback = await self.start_playback(
+            user_id=user_id,
+            podcast_id=podcast_id,
+            script_version_id=script.id,
+            lease_owner=lease_owner,
+            deadline_seconds=deadline_seconds,
+        )
+        return script, playback
+
+    async def _persist_generated_script(
+        self,
+        *,
+        podcast: Podcast,
+        source: PodcastSourceVersion,
+        snapshot_id: str,
+        result: PodcastScriptResult,
+        target_duration_seconds: int,
+    ) -> PodcastScriptVersion:
+        """Simpan script generation sebagai version ready immutable + segments.
+
+        Speaker dipetakan ke active agent version (Elean/Willy); ready wajib
+        dua suara berbeda dan setiap segment bercitation (paper grounding).
+        """
+        elean_version = await self.catalog.get_active_agent_version("elean")
+        willy_version = await self.catalog.get_active_agent_version("willy")
+        version_by_speaker = {"elean": elean_version.id, "willy": willy_version.id}
+        revision = (
+            await self.session.execute(
+                select(func.coalesce(func.max(PodcastScriptVersion.revision), 0)).where(
+                    PodcastScriptVersion.podcast_id == podcast.id
+                )
+            )
+        ).scalar_one() + 1
+        script = PodcastScriptVersion(
+            id=new_ulid(),
+            podcast_id=podcast.id,
+            source_version_id=source.id,
+            revision=revision,
+            runtime_snapshot_id=snapshot_id,
+            outline=result.outline,
+            target_duration_seconds=target_duration_seconds,
+            estimated_duration_seconds=result.estimated_duration_seconds,
+            status=SCRIPT_READY,
+        )
+        self.session.add(script)
+        await self.session.flush()
+        for position, segment_output in enumerate(result.segments, start=1):
+            self.session.add(
+                PodcastSegment(
+                    id=new_ulid(),
+                    script_version_id=script.id,
+                    position=position,
+                    agent_version_id=version_by_speaker[segment_output.speaker],
+                    text=segment_output.text.strip(),
+                    citations=json.dumps(segment_output.citations),
+                    estimated_ms=segment_output.estimated_ms,
+                )
+            )
+        podcast.state = "script_ready"
+        podcast.current_script_version_id = script.id
+        podcast.generation_job_id = None
+        record_outbox_event(
+            self.session,
+            aggregate_type="podcast",
+            aggregate_id=podcast.id,
+            aggregate_version=revision,
+            event_type="podcast.script_ready.v1",
+            payload={
+                "podcast_id": podcast.id,
+                "script_version_id": script.id,
+                "revision": revision,
+                "segment_count": len(result.segments),
+            },
+        )
         await self.session.flush()
         return script
 

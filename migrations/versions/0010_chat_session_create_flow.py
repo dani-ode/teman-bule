@@ -16,13 +16,13 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0010_phase10_chat_session_create_flow"
+revision = "0010_chat_session_create_flow"
 down_revision = "0009_phase9_agent_profile_image"
 branch_labels = None
 depends_on = None
 
 FLOW_ID = "4b5acae1-8453-4419-970b-d23abdc8addd"
-REGISTRY_ROW_ID = "01KCHATSESSIONCREATEFLOW0001"
+REGISTRY_ROW_ID = "01KCHATSESSIONCREATE000001"
 
 
 def upgrade() -> None:

@@ -37,7 +37,10 @@ build: compose-check
 	test -f src/temanbule/api/main.py
 	test -f alembic.ini
 	test -d migrations
-	$(COMPOSE) --profile application build
+	docker buildx build --builder temanbule-builder --load \
+		--build-arg PYTHON_IMAGE=python:3.12-slim-bookworm \
+		--build-arg UV_IMAGE=ghcr.io/astral-sh/uv:0.12.8 \
+		-t temanbule-backend:local .
 migrate:
 	$(COMPOSE) --profile maintenance run --rm migrate
 up:

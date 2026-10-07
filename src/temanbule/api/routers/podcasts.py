@@ -7,11 +7,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
-from temanbule.api.deps import CurrentUser, SessionDep
+from temanbule.api.deps import CurrentUser, SessionDep, SettingsDep
 from temanbule.modules.identity.deletion import DeletionService
-from temanbule.modules.podcasts.models import Podcast
+from temanbule.modules.podcasts.langflow_adapter import LangflowPodcastAdapter
+from temanbule.modules.podcasts.models import Podcast, PodcastSourceVersion
 from temanbule.modules.podcasts.services import PodcastService
+from temanbule.platform.errors import FeatureUnavailableError
 
 router = APIRouter(prefix="/v1", tags=["podcasts"])
 
@@ -47,6 +50,7 @@ class PlaybackResponse(BaseModel):
     playback_id: str
     podcast_id: str
     script_version_id: str
+    session_id: str
     state: str
     segment_cursor: int
     offset_ms: int
@@ -58,8 +62,18 @@ class UpdatePodcastRequest(BaseModel):
     title: str = Field(min_length=1, max_length=200)
 
 
-class CreatePlaybackRequest(BaseModel):
-    script_version_id: str = Field(min_length=1, max_length=26)
+class PlayPodcastRequest(BaseModel):
+    """Play = generate script baru (sync) + playback/session baru."""
+
+    target_duration_seconds: int = Field(gt=0, le=7200)
+
+
+class IngestionStatusResponse(BaseModel):
+    podcast_id: str
+    state: str
+    source_version_id: str | None
+    parse_status: str | None
+    page_count: int | None
 
 
 class AddSourceRequest(BaseModel):
@@ -89,6 +103,7 @@ async def add_source(
     current_user: CurrentUser,
     session: SessionDep,
 ) -> SourceResponse:
+    """Attach PDF finalized; ingestion Langflow (background) terjadwal via outbox."""
     service = PodcastService(session)
     source = await service.add_source(
         user_id=current_user.id, podcast_id=podcast_id, media_id=body.media_id
@@ -99,14 +114,39 @@ async def add_source(
     )
 
 
+@router.get("/podcasts/{podcast_id}/ingestion-status", response_model=IngestionStatusResponse)
+async def get_ingestion_status(
+    podcast_id: str,
+    current_user: CurrentUser,
+    session: SessionDep,
+) -> IngestionStatusResponse:
+    """Status ingestion dokumen terkini; dipoll frontend sampai parsed/failed."""
+    service = PodcastService(session)
+    podcast = await service.get_podcast(user_id=current_user.id, podcast_id=podcast_id)
+    source: PodcastSourceVersion | None = None
+    if podcast.current_source_version_id is not None:
+        source = (
+            await session.execute(
+                select(PodcastSourceVersion).where(
+                    PodcastSourceVersion.id == podcast.current_source_version_id
+                )
+            )
+        ).scalar_one_or_none()
+    return IngestionStatusResponse(
+        podcast_id=podcast.id,
+        state=podcast.state,
+        source_version_id=source.id if source is not None else None,
+        parse_status=source.parse_status if source is not None else None,
+        page_count=source.page_count if source is not None else None,
+    )
+
+
 @router.get("/podcasts", response_model=list[PodcastListItem])
 async def list_podcasts(
     current_user: CurrentUser,
     session: SessionDep,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> list[PodcastListItem]:
-    from sqlalchemy import select
-
     rows = (
         (
             await session.execute(
@@ -203,23 +243,36 @@ async def list_segments(
 @router.post("/podcasts/{podcast_id}/playbacks", response_model=PlaybackResponse, status_code=201)
 async def create_playback(
     podcast_id: str,
-    body: CreatePlaybackRequest,
+    body: PlayPodcastRequest,
     current_user: CurrentUser,
     session: SessionDep,
+    settings: SettingsDep,
 ) -> PlaybackResponse:
-    service = PodcastService(session)
-    playback = await service.start_playback(
+    """Play podcast: generate script baru via Langflow (sync) + playback baru.
+
+    Script tidak dipakai ulang lintas klik play — satu script version selalu
+    satu conversation session. Hasil Langflow divalidasi dua speaker
+    Elean/Willy + citations sebelum disimpan immutable.
+    """
+    if not settings.feature_podcast_enabled:
+        raise FeatureUnavailableError("Fitur podcast belum aktif.")
+    if not settings.langflow_api_key:
+        raise FeatureUnavailableError("Langflow belum dikonfigurasi.")
+    service = PodcastService(session, settings)
+    _script, playback = await service.generate_script_and_start_playback(
         user_id=current_user.id,
         podcast_id=podcast_id,
-        script_version_id=body.script_version_id,
+        target_duration_seconds=body.target_duration_seconds,
         lease_owner=f"user-{current_user.id}",
         deadline_seconds=3600,
+        adapter=LangflowPodcastAdapter(settings),
     )
     await session.commit()
     return PlaybackResponse(
         playback_id=playback.id,
         podcast_id=playback.podcast_id,
         script_version_id=playback.script_version_id,
+        session_id=playback.session_id,
         state=playback.state,
         segment_cursor=playback.segment_cursor,
         offset_ms=playback.offset_ms,
@@ -243,6 +296,7 @@ async def get_playback(
         playback_id=playback.id,
         podcast_id=playback.podcast_id,
         script_version_id=playback.script_version_id,
+        session_id=playback.session_id,
         state=playback.state,
         segment_cursor=playback.segment_cursor,
         offset_ms=playback.offset_ms,
@@ -267,6 +321,7 @@ async def end_playback(
         playback_id=playback.id,
         podcast_id=playback.podcast_id,
         script_version_id=playback.script_version_id,
+        session_id=playback.session_id,
         state=playback.state,
         segment_cursor=playback.segment_cursor,
         offset_ms=playback.offset_ms,
