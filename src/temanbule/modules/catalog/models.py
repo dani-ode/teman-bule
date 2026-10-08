@@ -237,6 +237,12 @@ class AiFlowRegistry(Base, TimestampMixin):
     tool_allowlist: Mapped[str | None] = mapped_column(Text)
     timeout_ms: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(20), default="staged")
+    # Nama komponen canvas Langflow yang jadi target key ``tweaks`` saat
+    # backend memanggil Workflow API v2 (mis. ``Webhook-HxHuc``). Nullable agar
+    # adapter lama yang men-hardcode ``json_input`` tetap kompatibel.
+    input_tweak_component: Mapped[str | None] = mapped_column(String(128))
+    # Nama komponen output terminal di canvas (referensi parsing; opsional).
+    output_component_name: Mapped[str | None] = mapped_column(String(128))
 
 
 class ToolRegistry(Base, TimestampMixin):

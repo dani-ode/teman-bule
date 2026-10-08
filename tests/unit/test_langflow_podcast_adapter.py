@@ -1,10 +1,14 @@
 """Transport doubles untuk LangflowPodcastAdapter; bukan uji vendor live.
 
 Menutup kontrak:
-- Ingestion: POST /api/v2/workflows mode background, tweak Webhook-iGh25,
-  acceptance queued + job_id; poll GET ?job_id= hingga completed page_count>0.
-- Script generation: mode sync, tweak Webhook-qTk7h, output tervalidasi dua
-  speaker Elean/Willy + citations; kegagalan → DependencyUnavailableError.
+- Ingestion: POST /api/v2/workflows mode background, tweak ke komponen yang
+  dipin binding (registry), acceptance queued + job_id; poll GET ?job_id=
+  hingga completed page_count>0.
+- Script generation: mode sync, tweak ke komponen dari binding, output
+  tervalidasi dua speaker Elean/Willy + citations; kegagalan →
+  DependencyUnavailableError.
+- Binding tanpa input_tweak_component → FLOW_NOT_CONFIGURED (komponen wajib
+  dipin di registry, tidak boleh hardcode/fallback).
 """
 
 from __future__ import annotations
@@ -27,7 +31,14 @@ def _adapter(respond) -> LangflowPodcastAdapter:
     )
 
 
-BINDING = FlowBinding("registered-flow", "podcast-ing.v1", "1", "1", 5000)
+BINDING = FlowBinding(
+    "registered-flow",
+    "podcast-ing.v1",
+    "1",
+    "1",
+    5000,
+    input_tweak_component="Webhook-iGh25",
+)
 
 
 @pytest.mark.asyncio
@@ -133,7 +144,8 @@ async def test_script_generation_sync_validated() -> None:
     def respond(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
         assert body["mode"] == "sync"
-        payload = json.loads(body["tweaks"]["Webhook-qTk7h"]["data"])
+        # Nama komponen berasal dari binding (registry), bukan konstanta modul.
+        payload = json.loads(body["tweaks"]["Webhook-FromRegistry"]["data"])
         assert payload["purpose"] == "podcast_script_generation"
         output = {
             "outline": "Pembahasan paper",
@@ -148,8 +160,16 @@ async def test_script_generation_sync_validated() -> None:
             json={"status": "completed", "has_errors": False, "errors": [], "output": output},
         )
 
+    script_binding = FlowBinding(
+        BINDING.flow_id,
+        BINDING.flow_version,
+        BINDING.input_schema_version,
+        BINDING.output_schema_version,
+        BINDING.timeout_ms,
+        input_tweak_component="Webhook-FromRegistry",
+    )
     result = await _adapter(respond).run_script_generation(
-        BINDING,
+        script_binding,
         {"purpose": "podcast_script_generation", "input": {"target_duration_seconds": 480}},
     )
     assert result.outline == "Pembahasan paper"
@@ -192,3 +212,20 @@ async def test_script_generation_rejects_invalid_output(failure: str) -> None:
     with pytest.raises(DependencyUnavailableError) as error:
         await _adapter(respond).run_script_generation(BINDING, {"purpose": "p"})
     assert error.value.code == "PODCAST_SCRIPT_OUTCOME_UNKNOWN"
+
+
+@pytest.mark.asyncio
+async def test_binding_tanpa_input_tweak_component_ditolak() -> None:
+    """Komponen tweak wajib dari registry; tanpa pin → FLOW_NOT_CONFIGURED."""
+    bare_binding = FlowBinding("registered-flow", "podcast-ing.v1", "1", "1", 5000)
+
+    def respond(request: httpx.Request) -> httpx.Response:  # pragma: no cover
+        raise AssertionError("request tidak boleh terkirim tanpa komponen registry")
+
+    adapter = _adapter(respond)
+    with pytest.raises(DependencyUnavailableError) as error:
+        await adapter.trigger_document_ingestion(bare_binding, {"podcast": {}})
+    assert error.value.code == "FLOW_NOT_CONFIGURED"
+    with pytest.raises(DependencyUnavailableError) as error:
+        await adapter.run_script_generation(bare_binding, {"purpose": "p"})
+    assert error.value.code == "FLOW_NOT_CONFIGURED"

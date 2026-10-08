@@ -89,7 +89,7 @@ def main() -> None:
         }, "package_code,revision")
     collections = []
     for provider, dimension, model, document_task, query_task in (
-        ("gemini", 768, "gemini-embedding-001", "RETRIEVAL_DOCUMENT", "RETRIEVAL_QUERY"),
+        ("gemini", 3072, "gemini-embedding-001", "RETRIEVAL_DOCUMENT", "RETRIEVAL_QUERY"),
         ("openai", 1536, "text-embedding-3-small", "search_document", "search_query"),
     ):
         provider_id = identifier("launch:provider:" + provider)

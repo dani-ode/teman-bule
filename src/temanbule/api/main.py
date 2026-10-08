@@ -20,6 +20,7 @@ from temanbule.api.routers import calls as calls_router
 from temanbule.api.routers import google_auth as google_auth_router
 from temanbule.api.routers import health as health_router
 from temanbule.api.routers import internal_calls as internal_calls_router
+from temanbule.api.routers import internal_knowledge as internal_knowledge_router
 from temanbule.api.routers import internal_runtime as internal_runtime_router
 from temanbule.api.routers import learning as learning_router
 from temanbule.api.routers import media as media_router
@@ -158,6 +159,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(webhooks_router.router)
     app.include_router(internal_runtime_router.router)
     app.include_router(internal_calls_router.router)
+    app.include_router(internal_knowledge_router.router)
 
     return app
 

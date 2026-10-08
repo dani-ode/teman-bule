@@ -107,7 +107,7 @@ async def _profile_fixture(db: AsyncSession) -> str:
         provider_id=provider.id,
         model_id=model.id,
         model_revision=1,
-        dimension=768,
+        dimension=3072,
         document_task_type="RETRIEVAL_DOCUMENT",
         query_task_type="RETRIEVAL_QUERY",
         normalization="l2",

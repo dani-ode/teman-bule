@@ -186,7 +186,7 @@ async def _profile_fixture(db: AsyncSession) -> list[str]:
             provider_id=provider.id,
             model_id=model.id,
             model_revision=1,
-            dimension=768,
+            dimension=3072,
             document_task_type=task,
             query_task_type="query",
             normalization="l2",

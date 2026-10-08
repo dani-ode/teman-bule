@@ -6,8 +6,9 @@ Kontrak (langflow-flows.md, realtime-podcast.md, api-events.md):
   terminal (``completed``/``failed``). Acceptance bukan completion.
 - ``podcast_script_generation``: mode ``sync`` saat pengguna menekan play;
   hasil outline + segments + citations divalidasi ketat sebelum disimpan.
-- Tweak diarahkan ke komponen Webhook yang dipin di registry (bukan hardcode
-  di kode); nama komponen menjadi bagian kontrak deployment flow.
+- Tweak diarahkan ke komponen Webhook yang dipin di registry
+  (``FlowBinding.input_tweak_component``, bukan hardcode di kode); nama
+  komponen menjadi bagian kontrak deployment flow.
 - API key hanya server-side via header ``x-api-key`` dan tidak pernah dilog.
   Semua kegagalan vendor → DependencyUnavailableError agar SQL job/request
   dapat di-retry; tidak ada output palsu.
@@ -25,9 +26,9 @@ from temanbule.modules.catalog.flows import FlowBinding
 from temanbule.platform.errors import DependencyUnavailableError
 from temanbule.platform.settings import Settings
 
-# Komponen input flow podcast (dokumentasi deployment; flow_id tetap dari registry).
-PODCAST_INGESTION_WEBHOOK_COMPONENT = "Webhook-iGh25"
-PODCAST_SCRIPT_WEBHOOK_COMPONENT = "Webhook-qTk7h"
+# Nama komponen Webhook target ``tweaks`` BUKAN lagi hardcode di sini:
+# nilainya dipin per environment di ai_flow_registry.input_tweak_component
+# dan dibawa FlowBinding (deployment development: Webhook-iGh25 / Webhook-qTk7h).
 
 
 class PodcastSegmentOutput(BaseModel):
@@ -82,6 +83,7 @@ class LangflowPodcastAdapter:
             raise DependencyUnavailableError(
                 "Langflow belum dikonfigurasi.", code="LANGFLOW_CONFIG_MISSING"
             )
+        input_component = self._input_component(binding)
         try:
             async with self._client(binding.timeout_ms) as client:
                 response = await client.post(
@@ -91,7 +93,7 @@ class LangflowPodcastAdapter:
                         "flow_id": binding.flow_id,
                         "mode": "background",
                         "tweaks": {
-                            PODCAST_INGESTION_WEBHOOK_COMPONENT: {
+                            input_component: {
                                 "data": json.dumps(envelope)
                             }
                         },
@@ -173,6 +175,7 @@ class LangflowPodcastAdapter:
             raise DependencyUnavailableError(
                 "Langflow belum dikonfigurasi.", code="LANGFLOW_CONFIG_MISSING"
             )
+        input_component = self._input_component(binding)
         try:
             async with self._client(binding.timeout_ms) as client:
                 response = await client.post(
@@ -182,7 +185,7 @@ class LangflowPodcastAdapter:
                         "flow_id": binding.flow_id,
                         "mode": "sync",
                         "tweaks": {
-                            PODCAST_SCRIPT_WEBHOOK_COMPONENT: {
+                            input_component: {
                                 "data": json.dumps(envelope)
                             }
                         },
@@ -207,6 +210,17 @@ class LangflowPodcastAdapter:
             ) from exc
 
     # --- HTTP helpers --------------------------------------------------------
+
+    @staticmethod
+    def _input_component(binding: FlowBinding) -> str:
+        """Komponen canvas target ``tweaks`` wajib dipin di registry."""
+        component = (binding.input_tweak_component or "").strip()
+        if not component:
+            raise DependencyUnavailableError(
+                "Registry flow belum mem-pin input_tweak_component.",
+                code="FLOW_NOT_CONFIGURED",
+            )
+        return component
 
     def _workflows_url(self) -> str:
         return self.settings.langflow_base_url.rstrip("/") + "/api/v2/workflows"

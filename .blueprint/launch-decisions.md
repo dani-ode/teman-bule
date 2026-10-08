@@ -96,12 +96,19 @@ dulu; probe generation/metering memakai controlled budget. Jangan mengganti mode
 diam-diam atau menyatakan model valid dari namanya. BYOK catalog hanya model dengan
 protocol/capability/metering yang benar-benar didukung adapter.
 
-Pilihan awal: Gemini `gemini-embedding-001` **768d** + OpenAI
-`text-embedding-3-small` **1536d**, cosine, L2 normalization Gemini yang diperkecil.
+Pilihan awal: Gemini `gemini-embedding-001` **3072d** (output native penuh,
+tanpa truncation; output native sudah unit-norm sehingga L2 normalization adapter
+bersifat defensif/no-op) + OpenAI `text-embedding-3-small` **1536d**, cosine.
 Gemini document `RETRIEVAL_DOCUMENT`, query `RETRIEVAL_QUERY`; OpenAI memakai
 endpoint yang sama untuk dokumen/query, label task internal tidak dikirim ke vendor.
 `MODEL_REVISION=1` adalah revisi profil internal, bukan snapshot vendor immutable.
 Batch 32, chunk target 512 tokens, overlap 64; enforce tokenizer limits sebelum request.
+
+Catatan migrasi 2026-10-08: sebelumnya Gemini dikonfigurasi **768d** (reduced).
+Karena node embedding Langflow memakai output native 3072d dan tidak membaca
+`outputDimensionality`, seluruh konfigurasi diselaraskan ke 3072d. Kelima collection
+Gemini di Astra (`*_gemini_v1`) harus di-drop dan dibuat ulang dengan dimension 3072
+melalui `scripts/seed_launch.py --apply`; dimensi collection tidak dapat diubah in-place.
 
 `text-embedding-3-large` valid, default **3072d**, dapat meminta reduced dimensions.
 Dokumentasi OpenAI menunjukkan biaya relatif sekitar 6,5x small; vector float32

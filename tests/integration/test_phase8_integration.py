@@ -100,7 +100,7 @@ async def _rich_user_fixture(db: AsyncSession) -> dict[str, str]:
         await db.flush()
         profile = EmbeddingProfile(
             id=new_ulid(), provider_id=provider.id, model_id=model.id,
-            model_revision=1, dimension=768, document_task_type="doc",
+            model_revision=1, dimension=3072, document_task_type="doc",
             query_task_type="query", normalization="l2", generation=1, status="active",
         )
         db.add(profile)

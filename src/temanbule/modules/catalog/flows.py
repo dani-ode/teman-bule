@@ -19,6 +19,10 @@ class FlowBinding:
     timeout_ms: int
     tool_allowlist: tuple[str, ...] = ()
     prompt_version: str | None = None
+    # Nama komponen canvas target key ``tweaks`` (mis. ``Webhook-iGh25``);
+    # dipin di registry per environment, bukan di-hardcode di adapter.
+    input_tweak_component: str | None = None
+    output_component_name: str | None = None
 
 
 async def resolve_flow(
@@ -62,4 +66,6 @@ async def resolve_flow(
         timeout_ms=row.timeout_ms,
         tool_allowlist=tuple(tools),
         prompt_version=row.prompt_version,
+        input_tweak_component=row.input_tweak_component,
+        output_component_name=row.output_component_name,
     )
