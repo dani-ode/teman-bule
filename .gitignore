@@ -6,6 +6,7 @@
 secrets/
 .agents/mcp_config.json
 !.agents/mcp_config.json.example
+.bob/mcp.json
 
 # Python
 __pycache__/
