@@ -6,6 +6,19 @@ Backend pembelajaran bahasa Inggris bertenaga AI untuk pengguna Indonesia, denga
 
 ---
 
+## Repositori Terkait
+
+| Repositori | Keterangan |
+|---|---|
+| **Frontend (App)** | [https://github.com/dani-ode/teman-bule-app](https://github.com/dani-ode/teman-bule-app) |
+| **Backend (repo ini)** | Berisi API, migration, dan konfigurasi Langflow |
+
+## Langflow Workflows
+
+Workflow Langflow yang perlu diimpor tersedia di folder [`custom_langflow/workflows/`](custom_langflow/workflows/). Import file-file tersebut melalui UI Langflow sebelum menjalankan aplikasi.
+
+---
+
 ## Daftar Isi
 
 - [Gambaran](#gambaran)
