@@ -14,21 +14,21 @@ async def chat_context(session: AsyncSession, snapshot_id: str, user_id: str) ->
     snapshot = await session.get(RuntimeSnapshot, snapshot_id)
     if snapshot is None or snapshot.owner_user_id != user_id:
         raise NotFoundError("Runtime snapshot tidak ditemukan.")
-    persona = (await session.execute(
-        select(Agent.code).join(AgentVersion, AgentVersion.agent_id == Agent.id).where(
+    agent_row = (await session.execute(
+        select(Agent.id, Agent.code, Agent.display_name)
+        .join(AgentVersion, AgentVersion.agent_id == Agent.id)
+        .where(
             AgentVersion.id == snapshot.agent_version_id,
             AgentVersion.status == "published", Agent.status == "active",
         )
-    )).scalar_one_or_none()
-    if persona not in {"elean", "willy"}:
+    )).one_or_none()
+    if agent_row is None or agent_row.code not in {"elean", "willy"}:
         raise DependencyUnavailableError("Persona snapshot tidak tersedia.")
     return {
-        "persona": persona,
+        "persona": agent_row.display_name,
+        "agent_code": agent_row.code,
         "agent_version_id": snapshot.agent_version_id,
         "runtime_snapshot_id": snapshot.id,
-        "ai_configuration": {
-            "model_configuration_id": snapshot.llm_model_configuration_id,
-            "capability": "llm",
-        },
+        "ai_configuration": agent_row.id,
         "policy": json.loads(snapshot.policy),
     }

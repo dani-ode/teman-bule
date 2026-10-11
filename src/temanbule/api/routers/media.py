@@ -9,7 +9,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
-from temanbule.api.deps import CurrentUser, SessionDep
+from temanbule.api.deps import CurrentUser, SessionDep, SettingsDep
+from temanbule.modules.media.scan_adapter import build_malware_scanner
 from temanbule.modules.media.services import MediaService
 from temanbule.platform.errors import FeatureUnavailableError
 
@@ -68,8 +69,9 @@ async def finalize_upload(
     body: FinalizeRequest,
     current_user: CurrentUser,
     session: SessionDep,
+    settings: SettingsDep,
 ) -> MediaResponse:
-    service = MediaService(session)
+    service = MediaService(session, scanner=build_malware_scanner(settings))
     media = await service.finalize_upload(
         user_id=current_user.id,
         media_id=media_id,

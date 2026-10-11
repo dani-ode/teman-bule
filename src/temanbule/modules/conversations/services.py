@@ -156,6 +156,7 @@ class ConversationService:
         text: str,
         terminal_state: str = "completed",
         modality: str = "text",
+        media_id: str | None = None,
     ) -> ConversationMessage:
         """Simpan respons agent setelah invocation terverifikasi."""
         message = ConversationMessage(
@@ -166,6 +167,7 @@ class ConversationService:
             agent_version_id=agent_version_id,
             text=text,
             modality=modality,
+            media_id=media_id,
             sequence=await self._next_sequence(session_id),
             terminal_state=terminal_state,
             generated_at=datetime.now(UTC),

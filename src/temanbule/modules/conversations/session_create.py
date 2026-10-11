@@ -4,6 +4,10 @@ Berbeda dengan chat turn biasa, flow ini hanya menerima konteks awal
 (agent/category) dan mengembalikan sapaan pertama AI. Backend tetap menjadi
 pemilik persistensi: teks dari flow disimpan sebagai ConversationMessage
 role='agent' oleh ChatService.
+
+Komponen canvas target ``tweaks`` tidak di-hardcode — diambil dari registry
+(``FlowBinding.input_tweak_component``, kolom ``ai_flow_registry.input_tweak_component``)
+agar per-environment dapat dipin tanpa mengubah kode.
 """
 
 import json
@@ -13,6 +17,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from temanbule.modules.catalog.flows import FlowBinding
+from temanbule.modules.conversations.langflow import parse_workflow_output
 from temanbule.platform.errors import DependencyUnavailableError
 from temanbule.platform.settings import Settings
 
@@ -22,8 +27,11 @@ class SessionCreateResult(BaseModel):
 
     response_text: str = Field(min_length=1, max_length=32000)
     # URL audio S3/MinIO hasil TTS dari workflow; opsional (fallback text-only).
+    # Flat fields (bukan nested object) sesuai output Langflow greeting.
     audio_url: str | None = Field(default=None, max_length=2048)
     audio_duration_ms: int | None = Field(default=None, ge=0)
+    object_key: str | None = Field(default=None, max_length=512)
+    bucket: str | None = Field(default=None, max_length=128)
 
 
 class LangflowSessionCreateAdapter:
@@ -31,9 +39,21 @@ class LangflowSessionCreateAdapter:
         self.settings = settings
         self.transport = transport
 
+    @staticmethod
+    def _input_component(binding: FlowBinding) -> str:
+        """Komponen canvas target ``tweaks`` wajib dipin di registry."""
+        component = (binding.input_tweak_component or "").strip()
+        if not component:
+            raise DependencyUnavailableError(
+                "Registry flow belum mem-pin input_tweak_component.",
+                code="FLOW_NOT_CONFIGURED",
+            )
+        return component
+
     async def run(self, binding: FlowBinding, envelope: dict[str, Any]) -> SessionCreateResult:
         if not self.settings.langflow_api_key:
             raise DependencyUnavailableError("Langflow belum dikonfigurasi.")
+        input_component = self._input_component(binding)
         try:
             async with httpx.AsyncClient(
                 timeout=httpx.Timeout(
@@ -47,7 +67,7 @@ class LangflowSessionCreateAdapter:
                     headers={"x-api-key": self.settings.langflow_api_key},
                     json={"flow_id": binding.flow_id, "mode": "sync",
                           "session_id": envelope["session"]["session_id"],
-                          "tweaks": {"json_input": {"payload": json.dumps(envelope)}}},
+                          "tweaks": {input_component: {"data": json.dumps(envelope)}}},
                 )
                 response.raise_for_status()
                 body = response.json()
@@ -55,9 +75,7 @@ class LangflowSessionCreateAdapter:
                 raise ValueError("Workflow not completed")
             if body.get("has_errors", False) is not False or body.get("errors"):
                 raise ValueError("Workflow errors")
-            output = body.get("output")
-            if isinstance(output, dict) and isinstance(output.get("text"), str):
-                output = json.loads(output["text"])
+            output = parse_workflow_output(body.get("output"))
             if not isinstance(output, dict):
                 raise ValueError("Workflow output invalid")
             result = SessionCreateResult.model_validate(output)

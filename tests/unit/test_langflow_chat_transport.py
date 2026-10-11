@@ -1,4 +1,9 @@
-"""Transport doubles validate protocol handling, not live vendor compatibility."""
+"""Transport doubles validate protocol handling, not live vendor compatibility.
+
+Kontrak: key ``tweaks`` menunjuk komponen canvas yang dipin di registry
+(``input_tweak_component``), envelope dikirim sebagai JSON string di field
+``data`` komponen Webhook — tidak ada hardcode ``json_input``.
+"""
 
 import json
 
@@ -19,7 +24,8 @@ async def test_chat_matches_deployed_v2_schema(failure):
         assert body["flow_id"] == "registered-flow"
         assert body["mode"] == "sync"
         assert "input_type" not in body
-        assert json.loads(body["tweaks"]["json_input"]["payload"])["request_id"] == "turn-1"
+        assert "json_input" not in body["tweaks"]
+        assert json.loads(body["tweaks"]["Webhook-HxHuc"]["data"])["request_id"] == "turn-1"
         output = {
             "schema_version": "1", "request_id": "turn-1", "status": "completed",
             "response_text": "Hello!", "citations": [], "tool_outcomes": [],
@@ -36,7 +42,8 @@ async def test_chat_matches_deployed_v2_schema(failure):
     adapter = LangflowChatAdapter(
         Settings(_env_file=None, langflow_api_key="synthetic"), httpx.MockTransport(respond),
     )
-    binding = FlowBinding("registered-flow", "chat.v1", "3", "1", 3000)
+    binding = FlowBinding("registered-flow", "chat.v1", "3", "1", 3000,
+                          input_tweak_component="Webhook-HxHuc")
     envelope = {"request_id": "turn-1", "session": {"session_id": "session-1"}}
     if failure:
         with pytest.raises(DependencyUnavailableError) as error:
@@ -44,3 +51,17 @@ async def test_chat_matches_deployed_v2_schema(failure):
         assert error.value.code == "CHAT_OUTCOME_UNKNOWN"
     else:
         assert (await adapter.run(binding, envelope)).response_text == "Hello!"
+
+
+@pytest.mark.asyncio
+async def test_chat_binding_tanpa_input_tweak_component_ditolak():
+    """Komponen tweak wajib dipin di registry; tanpa pin → FLOW_NOT_CONFIGURED."""
+    adapter = LangflowChatAdapter(
+        Settings(_env_file=None, langflow_api_key="synthetic"),
+        httpx.MockTransport(lambda request: httpx.Response(200, json={})),
+    )
+    binding = FlowBinding("registered-flow", "chat.v1", "3", "1", 3000)
+    envelope = {"request_id": "turn-1", "session": {"session_id": "session-1"}}
+    with pytest.raises(DependencyUnavailableError) as error:
+        await adapter.run(binding, envelope)
+    assert error.value.code == "FLOW_NOT_CONFIGURED"

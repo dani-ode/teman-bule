@@ -238,8 +238,9 @@ class AiFlowRegistry(Base, TimestampMixin):
     timeout_ms: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(20), default="staged")
     # Nama komponen canvas Langflow yang jadi target key ``tweaks`` saat
-    # backend memanggil Workflow API v2 (mis. ``Webhook-HxHuc``). Nullable agar
-    # adapter lama yang men-hardcode ``json_input`` tetap kompatibel.
+    # backend memanggil Workflow API v2 (mis. ``Webhook-HxHuc``). Wajib dipin
+    # per environment; adapter menolak menjalankan flow tanpa pin ini
+    # (FLOW_NOT_CONFIGURED) — tidak ada hardcode/fallback di kode.
     input_tweak_component: Mapped[str | None] = mapped_column(String(128))
     # Nama komponen output terminal di canvas (referensi parsing; opsional).
     output_component_name: Mapped[str | None] = mapped_column(String(128))

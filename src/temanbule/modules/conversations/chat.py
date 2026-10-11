@@ -7,9 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from temanbule.modules.catalog.chat_context import chat_context
 from temanbule.modules.catalog.flows import resolve_flow
-from temanbule.modules.conversations.langflow import LangflowChatAdapter
+from temanbule.modules.conversations.langflow import ChatResult, LangflowChatAdapter
 from temanbule.modules.conversations.services import ConversationService
-from temanbule.modules.conversations.session_create import LangflowSessionCreateAdapter
+from temanbule.modules.conversations.session_create import LangflowSessionCreateAdapter, SessionCreateResult
 from temanbule.modules.media.models import MediaObject
 from temanbule.platform.errors import (
     AppError,
@@ -80,9 +80,14 @@ class ChatService:
                     },
                     "persona": context["persona"],
                     "ai_configuration": context["ai_configuration"],
-                    "input": {"agent_code": agent_code, "category_id": category_id},
+                    "input": {
+                        "agent_code": context["agent_code"],
+                        "category_id": category_id,
+                    },
                 }
                 result = await self.session_create_adapter.run(binding, envelope)
+                # Simpan media_id bila workflow mengembalikan object_key audio
+                greeting_media_id = await self._resolve_media_id_from_result(result)
                 message = await conversations.append_agent_message(
                     session_id=conversation.id,
                     owner_user_id=user_id,
@@ -91,6 +96,7 @@ class ChatService:
                     # Chat mostly audio: greeting disimpan sebagai modality 'audio'
                     # bila flow mengembalikan URL audio S3/MinIO hasil TTS.
                     modality="audio" if result.audio_url else "text",
+                    media_id=greeting_media_id,
                 )
                 first_message = {
                     "message_id": message.id,
@@ -98,6 +104,7 @@ class ChatService:
                     "role": message.role,
                     "text": message.text,
                     "modality": message.modality,
+                    "media_id": message.media_id,
                     "audio_url": result.audio_url,
                     "audio_duration_ms": result.audio_duration_ms,
                     "sequence": message.sequence,
@@ -134,6 +141,7 @@ class ChatService:
         )
         context = await chat_context(self.session, conversation.runtime_snapshot_id, user_id)
         history = await conversations.list_messages(user_id=user_id, session_id=session_id)
+        practice = await conversations.get_practice_session(session_id=session_id)
         envelope = {
             "schema_version": binding.input_schema_version,
             "request_id": new_ulid(), "purpose": "chat_turn",
@@ -145,7 +153,12 @@ class ChatService:
             },
             "persona": context["persona"],
             "ai_configuration": context["ai_configuration"],
-            "input": {"modality": "text", "text": text},
+            "input": {
+                "modality": "text",
+                "agent_code": context["agent_code"],
+                "category_id": practice.category_id,
+                "text": text,
+            },
             "policy": {
                 "tool_allowlist": list(binding.tool_allowlist),
                 "retrieval_scopes": [], "output_schema": binding.output_schema_version,
@@ -153,8 +166,29 @@ class ChatService:
         }
         if client_key is not None:
             envelope["session"]["client_message_id"] = client_key
+        # Simpan pesan user + respons agent dengan media_id bila ada
         result = await self.adapter.run(binding, envelope)
-        return {"session_id": session_id, **result.model_dump()}
+        user_message = await conversations.append_user_message(
+            user_id=user_id,
+            session_id=session_id,
+            text=text,
+            client_key=client_key,
+        )
+        agent_media_id = await self._resolve_media_id_from_result(result)
+        agent_message = await conversations.append_agent_message(
+            session_id=session_id,
+            owner_user_id=user_id,
+            agent_version_id=practice.agent_version_id,
+            text=result.response_text,
+            modality="audio" if result.audio_url else "text",
+            media_id=agent_media_id,
+        )
+        return {
+            "session_id": session_id,
+            "message_id": agent_message.id,
+            "user_message_id": user_message.id,
+            **result.model_dump(),
+        }
 
     async def send_voice(
         self, *, user_id: str, session_id: str, media_id: str,
@@ -195,6 +229,7 @@ class ChatService:
         )
         context = await chat_context(self.session, conversation.runtime_snapshot_id, user_id)
         history = await conversations.list_messages(user_id=user_id, session_id=session_id)
+        practice = await conversations.get_practice_session(session_id=session_id)
 
         envelope = {
             "schema_version": binding.input_schema_version,
@@ -209,6 +244,8 @@ class ChatService:
             "ai_configuration": context["ai_configuration"],
             "input": {
                 "modality": "audio",
+                "agent_code": context["agent_code"],
+                "category_id": practice.category_id,
                 "media_id": media_id,
                 "storage_key": media.storage_key,
                 "text": text,  # Optional: pre-transcribed text atau hint
@@ -222,7 +259,28 @@ class ChatService:
             envelope["session"]["client_message_id"] = client_key
 
         result = await self.adapter.run(binding, envelope)
-        return {"session_id": session_id, **result.model_dump()}
+        # Simpan pesan user (voice) + respons agent dengan media_id
+        user_message = await conversations.append_user_message(
+            user_id=user_id,
+            session_id=session_id,
+            text=text or "[voice message]",
+            client_key=client_key,
+        )
+        agent_media_id = await self._resolve_media_id_from_result(result)
+        agent_message = await conversations.append_agent_message(
+            session_id=session_id,
+            owner_user_id=user_id,
+            agent_version_id=practice.agent_version_id,
+            text=result.response_text,
+            modality="audio" if result.audio_url else "text",
+            media_id=agent_media_id,
+        )
+        return {
+            "session_id": session_id,
+            "message_id": agent_message.id,
+            "user_message_id": user_message.id,
+            **result.model_dump(),
+        }
 
     async def _get_owned_media(self, user_id: str, media_id: str) -> MediaObject:
         """Ambil media dengan ownership check."""
@@ -235,3 +293,24 @@ class ChatService:
         if media is None or media.owner_user_id != user_id:
             raise NotFoundError("Media tidak ditemukan.")
         return media
+
+    async def _resolve_media_id_from_result(
+        self, result: "ChatResult | SessionCreateResult"
+    ) -> str | None:
+        """Cari media_id dari object_key/bucket yang dikembalikan workflow.
+
+        Workflow TTS mengembalikan object_key + bucket; backend resolve ke
+        media_objects.id agar message ter-link ke media. Bila tidak ditemukan,
+        return None (message tetap tersimpan tanpa media_id).
+        """
+        if not result.object_key or not result.bucket:
+            return None
+        from sqlalchemy import select
+        media = (
+            await self.session.execute(
+                select(MediaObject).where(
+                    MediaObject.storage_key == result.object_key,
+                )
+            )
+        ).scalar_one_or_none()
+        return media.id if media else None

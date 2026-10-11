@@ -52,8 +52,9 @@ class SttPort(Protocol):
 
 
 class MediaService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, scanner: MalwareScannerPort | None = None) -> None:
         self.session = session
+        self.scanner = scanner
 
     async def register_upload(
         self, *, user_id: str, media_type: str, size_bytes: int
@@ -103,6 +104,18 @@ class MediaService:
         media.checksum = checksum
         media.status = STATUS_UPLOADED
         await self.session.flush()
+
+        # Jalankan malware scan sinkron (DEC-15). Bila scanner tersedia dan
+        # hasilnya clean → finalized; malicious → rejected; error → tetap
+        # uploaded/scan pending (fail-closed, media belum dapat dipakai).
+        if self.scanner is not None:
+            scan_state = await self.scanner.scan(
+                storage_key=media.storage_key, media_type=media.media_type
+            )
+            if scan_state in (SCAN_CLEAN, SCAN_MALICIOUS):
+                media.scan_state = scan_state
+                media.status = STATUS_FINALIZED if scan_state == SCAN_CLEAN else STATUS_REJECTED
+                await self.session.flush()
         return media
 
     async def apply_scan_result(

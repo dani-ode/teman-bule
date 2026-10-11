@@ -183,12 +183,14 @@ async def create_message(
     session: SessionDep,
     settings: SettingsDep,
 ) -> dict[str, object]:
-    return await ChatService(session, settings).send(
+    result = await ChatService(session, settings).send(
         user_id=current_user.id,
         session_id=session_id,
         text=body.text,
         client_key=body.client_message_id,
     )
+    await session.commit()
+    return result
 
 
 @router.post("/sessions/{session_id}/voice-messages", status_code=201)
@@ -200,13 +202,15 @@ async def create_voice_message(
     settings: SettingsDep,
 ) -> dict[str, object]:
     """Kirim voice message; Langflow melakukan STT + generate respons audio."""
-    return await ChatService(session, settings).send_voice(
+    result = await ChatService(session, settings).send_voice(
         user_id=current_user.id,
         session_id=session_id,
         media_id=body.media_id,
         text=body.text,
         client_key=body.client_message_id,
     )
+    await session.commit()
+    return result
 
 
 @router.get("/sessions/{session_id}/messages", response_model=list[MessageResponse])
