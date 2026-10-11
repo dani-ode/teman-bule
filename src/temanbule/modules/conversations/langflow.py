@@ -107,6 +107,10 @@ class LangflowChatAdapter:
                 response.raise_for_status()
                 body = response.json()
             if not isinstance(body, dict) or body.get("status") != "completed":
+                logger.warning(
+                    "chat workflow tidak completed: %r",
+                    str(body.get("errors") if isinstance(body, dict) else body)[:600],
+                )
                 raise ValueError("Workflow not completed")
             if body.get("has_errors", False) is not False or body.get("errors"):
                 raise ValueError("Workflow errors")

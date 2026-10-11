@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel, Field
 
 from temanbule.api.deps import CurrentUser, SessionDep, SettingsDep
@@ -91,6 +91,16 @@ class MessageResponse(BaseModel):
     sequence: int
     terminal_state: str
     created_at: str
+    # Konten pesan untuk render di klien (chat history).
+    text: str | None
+    modality: str | None
+    # Link ke media_objects untuk audio yang terdaftar (voice message user);
+    # klien dapat me-refresh URL lewat GET /v1/media/{media_id}/download-url.
+    media_id: str | None
+    # URL audio siap putar: presigned GET (media terdaftar) atau URL publik
+    # bucket chat (audio agent hasil TTS, bila bucket public-read).
+    audio_url: str | None
+    audio_duration_ms: int | None
 
 
 def _session_response(s: ConversationSession) -> SessionResponse:
@@ -218,11 +228,24 @@ async def list_messages(
     session_id: str,
     current_user: CurrentUser,
     session: SessionDep,
+    settings: SettingsDep,
+    request: Request,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> list[MessageResponse]:
-    service = ConversationService(session)
+    """History room chat (owner-scoped).
+
+    Pesan audio disertai ``audio_url`` siap putar: voice message user
+    (media_id terdaftar) di-presign per pesan; audio agent hasil TTS
+    di-resolve dari storage key stabil bila bucket chat public-read.
+    """
+    service = ConversationService(session, settings)
     messages = await service.list_messages(
         user_id=current_user.id, session_id=session_id, limit=limit
+    )
+    download_url_factory = getattr(request.app.state, "media_download_url_factory", None)
+    audio_urls = await service.resolve_message_audio_urls(
+        messages,
+        download_url_factory if callable(download_url_factory) else None,
     )
     return [
         MessageResponse(
@@ -232,6 +255,11 @@ async def list_messages(
             sequence=m.sequence,
             terminal_state=m.terminal_state,
             created_at=m.created_at.isoformat(),
+            text=m.text,
+            modality=m.modality,
+            media_id=m.media_id,
+            audio_url=audio_urls.get(m.id),
+            audio_duration_ms=m.audio_duration_ms,
         )
         for m in messages
     ]

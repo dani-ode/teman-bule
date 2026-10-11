@@ -10,6 +10,7 @@ Kontrak:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 from sqlalchemy import delete, func, select
@@ -26,6 +27,7 @@ from temanbule.modules.conversations.models import (
 from temanbule.modules.reliability.outbox import record_outbox_event
 from temanbule.platform.errors import ConflictError, NotFoundError, ValidationError
 from temanbule.platform.security import new_ulid
+from temanbule.platform.settings import Settings
 
 SESSION_ACTIVE = "active"
 SESSION_COMPLETED = "completed"
@@ -35,8 +37,9 @@ ROLE_AGENT = "agent"
 
 
 class ConversationService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, settings: Settings | None = None) -> None:
         self.session = session
+        self.settings = settings
         self.snapshots = RuntimeSnapshotBuilder(session)
 
     async def start_practice_session(
@@ -111,8 +114,14 @@ class ConversationService:
         session_id: str,
         text: str,
         client_key: str | None,
+        modality: str = "text",
+        media_id: str | None = None,
     ) -> ConversationMessage:
-        """Simpan pesan user; idempoten per client_key dalam session."""
+        """Simpan pesan user; idempoten per client_key dalam session.
+
+        Voice message disimpan dengan modality='audio' + media_id agar audio
+        milik user tetap dapat diputar ulang dari history room.
+        """
         if not text.strip():
             raise ValidationError("Pesan kosong.")
         conversation = await self._owned_session(user_id, session_id)
@@ -140,6 +149,8 @@ class ConversationService:
             owner_user_id=user_id,
             role=ROLE_USER,
             text=text,
+            modality=modality,
+            media_id=media_id,
             sequence=await self._next_sequence(session_id),
             client_key=client_key,
         )
@@ -157,6 +168,7 @@ class ConversationService:
         terminal_state: str = "completed",
         modality: str = "text",
         media_id: str | None = None,
+        audio_duration_ms: int | None = None,
     ) -> ConversationMessage:
         """Simpan respons agent setelah invocation terverifikasi."""
         message = ConversationMessage(
@@ -168,6 +180,7 @@ class ConversationService:
             text=text,
             modality=modality,
             media_id=media_id,
+            audio_duration_ms=audio_duration_ms,
             sequence=await self._next_sequence(session_id),
             terminal_state=terminal_state,
             generated_at=datetime.now(UTC),
@@ -243,6 +256,67 @@ class ConversationService:
 
     async def get_owned_session(self, *, user_id: str, session_id: str) -> ConversationSession:
         return await self._owned_session(user_id, session_id)
+
+    async def resolve_message_audio_urls(
+        self,
+        messages: list[ConversationMessage],
+        download_url_factory: Callable[[str], str] | None,
+    ) -> dict[str, str]:
+        """Resolve audio URL per message_id untuk render history.
+
+        Dua sumber, berurutan:
+        1. media_id → media_objects.storage_key → presigned GET (scoped, TTL
+           terbatas). Berlaku untuk voice message user (selalu terdaftar di
+           media_objects) dan audio agent yang berhasil di-link.
+        2. Fallback agent audio: audio TTS ditulis workflow Langflow langsung
+           ke bucket chat public-read tanpa baris media_objects, sehingga
+           media_id bisa None. Bangun URL publik path-style dari storage_key
+           bawaan ``agent-audio/{session_id}/{message_id}`` (disepakati
+           dengan flow; bucket private → entry None, klien fallback text).
+
+        Presigning murni operasi lokal (signing) sehingga aman dipanggil
+        per-pesan dari handler async.
+        """
+        from temanbule.modules.media.models import MediaObject  # noqa: PLC0415
+
+        media_ids = {m.media_id for m in messages if m.media_id}
+        storage_by_media_id: dict[str, str] = {}
+        if media_ids:
+            rows = (
+                await self.session.execute(
+                    select(MediaObject.id, MediaObject.storage_key).where(
+                        MediaObject.id.in_(media_ids)
+                    )
+                )
+            ).all()
+            storage_by_media_id = {media_id: key for media_id, key in rows}
+
+        agent_audio_allowed = (
+            self.settings is not None
+            and self.settings.agent_audio_fallback_enabled
+            and self.settings.agent_audio_bucket_public_read
+        )
+        urls: dict[str, str] = {}
+        for message in messages:
+            if message.modality != "audio":
+                continue
+            if message.media_id:
+                storage_key = storage_by_media_id.get(message.media_id)
+                if storage_key and download_url_factory is not None:
+                    urls[message.id] = download_url_factory(storage_key)
+            elif (
+                message.role == ROLE_AGENT
+                and agent_audio_allowed
+                and self.settings is not None
+            ):
+                storage_key = self.settings.agent_audio_key_pattern.format(
+                    session_id=message.session_id, message_id=message.id
+                )
+                endpoint = self.settings.s3_endpoint_url.rstrip("/")
+                urls[message.id] = (
+                    f"{endpoint}/{self.settings.s3_bucket}/{storage_key.lstrip('/')}"
+                )
+        return urls
 
     async def delete_session(self, *, user_id: str, session_id: str) -> None:
         """Hapus session beserta seluruh pesan terkait (CASCADE).

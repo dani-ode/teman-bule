@@ -16,6 +16,7 @@ from __future__ import annotations
 import httpx
 from pydantic import BaseModel, ValidationError
 
+from temanbule.modules.media.services import MalwareScannerPort
 from temanbule.platform.settings import Settings
 
 _SCAN_TIMEOUT_SECONDS = 15.0
@@ -56,6 +57,23 @@ class HttpMalwareScanner:
         return "error"
 
 
-def build_malware_scanner(settings: Settings) -> HttpMalwareScanner:
-    """Bangun scanner konkret untuk disuntikkan ke MediaService."""
+class _NoOpCleanScanner:
+    """Scanner no-op untuk DEV ONLY (MEDIA_SCAN_ENABLED=false).
+
+    Selalu mengembalikan ``clean`` agar media langsung finalized tanpa
+    microservice scan. TIDAK untuk produksi — melewati pertahanan malware.
+    """
+
+    async def scan(self, *, storage_key: str, media_type: str) -> str:  # noqa: ARG002
+        return "clean"
+
+
+def build_malware_scanner(settings: Settings) -> MalwareScannerPort:
+    """Bangun scanner untuk disuntikkan ke MediaService.
+
+    ``MEDIA_SCAN_ENABLED=false`` (DEV ONLY) → no-op scanner yang selalu
+    ``clean``; selain itu pakai HTTP microservice fail-closed.
+    """
+    if not settings.media_scan_enabled:
+        return _NoOpCleanScanner()
     return HttpMalwareScanner(settings)

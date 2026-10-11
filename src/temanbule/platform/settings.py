@@ -190,6 +190,10 @@ class Settings(BaseSettings):
     astra_request_timeout_seconds: float = 20.0
 
     # --- Media scan (wajib bila FEATURE_MEDIA_ENABLED) ---
+    # MEDIA_SCAN_ENABLED=false → scanner no-op yang selalu 'clean' (DEV ONLY;
+    # lewati malware scan saat microservice belum berjalan). Default true agar
+    # perilaku produksi tetap fail-closed.
+    media_scan_enabled: bool = True
     media_scan_service_url: str = ""
     media_scan_service_token: str = ""
 
@@ -202,6 +206,16 @@ class Settings(BaseSettings):
     s3_force_path_style: bool = False
     s3_signed_url_ttl_seconds: int = 300
     s3_max_upload_bytes: int = 0
+
+    # --- Agent TTS audio fallback (history chat) ---
+    # Audio balasan agent ditulis workflow Langflow langsung ke bucket tanpa
+    # baris media_objects. Bila bucket chat public-read, history dapat
+    # membangun URL publik dari storage_key bawaan yang disepakati dengan
+    # flow. Nonaktifkan (atau set bucket public-read=false) untuk bucket
+    # private — klien fallback render text.
+    agent_audio_fallback_enabled: bool = True
+    agent_audio_key_pattern: str = "agent-audio/{session_id}/{message_id}"
+    agent_audio_bucket_public_read: bool = False
 
     # --- LiveKit / TTS (wajib bila FEATURE_REALTIME_CALL_ENABLED) ---
     livekit_url: str = ""
@@ -392,11 +406,10 @@ class Settings(BaseSettings):
                 if getattr(self, name.lower()) <= 0:
                     problems.append(name)
 
-        # Feature: media — scan service + S3 storage wajib
+        # Feature: media — S3 storage selalu wajib; scan service hanya wajib
+        # bila MEDIA_SCAN_ENABLED aktif (false = dev bypass, scan no-op clean).
         if self.feature_media_enabled:
             for name in (
-                "MEDIA_SCAN_SERVICE_URL",
-                "MEDIA_SCAN_SERVICE_TOKEN",
                 "S3_ENDPOINT_URL",
                 "S3_REGION",
                 "S3_BUCKET",
@@ -405,6 +418,13 @@ class Settings(BaseSettings):
             ):
                 if _is_blank(getattr(self, name.lower())):
                     problems.append(name)
+            if self.media_scan_enabled:
+                for name in (
+                    "MEDIA_SCAN_SERVICE_URL",
+                    "MEDIA_SCAN_SERVICE_TOKEN",
+                ):
+                    if _is_blank(getattr(self, name.lower())):
+                        problems.append(name)
             for name in ("S3_SIGNED_URL_TTL_SECONDS", "S3_MAX_UPLOAD_BYTES"):
                 if getattr(self, name.lower()) <= 0:
                     problems.append(name)

@@ -89,7 +89,10 @@ class ConversationMessage(Base):
     )
     modality: Mapped[str] = mapped_column(String(20), default="text")
     text: Mapped[str] = mapped_column(Text)
-    media_id: Mapped[str | None] = mapped_column(String(26))
+    media_id: Mapped[str | None] = mapped_column(String(26), index=True)
+    # Durasi audio (ms) dipersist agar history bisa render bubble audio
+    # tanpa memanggil ulang workflow; null untuk pesan text/data lama.
+    audio_duration_ms: Mapped[int | None] = mapped_column(Integer)
     sequence: Mapped[int] = mapped_column(Integer)
     client_key: Mapped[str | None] = mapped_column(String(128))
     generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

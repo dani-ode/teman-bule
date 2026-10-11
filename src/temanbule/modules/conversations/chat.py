@@ -9,7 +9,10 @@ from temanbule.modules.catalog.chat_context import chat_context
 from temanbule.modules.catalog.flows import resolve_flow
 from temanbule.modules.conversations.langflow import ChatResult, LangflowChatAdapter
 from temanbule.modules.conversations.services import ConversationService
-from temanbule.modules.conversations.session_create import LangflowSessionCreateAdapter, SessionCreateResult
+from temanbule.modules.conversations.session_create import (
+    LangflowSessionCreateAdapter,
+    SessionCreateResult,
+)
 from temanbule.modules.media.models import MediaObject
 from temanbule.platform.errors import (
     AppError,
@@ -33,6 +36,10 @@ class ChatService:
         self.session_create_adapter = session_create_adapter or LangflowSessionCreateAdapter(
             settings
         )
+        # Storage key audio TTS yang sudah direlokasi per session (session chat
+        # single-user sehingga turn diproses sekuensial). Hanya bookkeeping
+        # internal; resolusi history memakai key stabil turunan message_id.
+        self._last_object_key_by_session: dict[str, tuple[str, str]] = {}
 
     async def create_session_with_greeting(
         self, *, user_id: str, agent_code: str, category_id: str
@@ -46,7 +53,7 @@ class ChatService:
         Greeting best-effort: jika flow belum terdaftar / gagal, session tetap
         terbuat dan first_message=None agar klien tetap bisa masuk room.
         """
-        conversations = ConversationService(self.session)
+        conversations = ConversationService(self.session, self.settings)
         conversation = await conversations.start_practice_session(
             user_id=user_id, agent_code=agent_code, category_id=category_id,
         )
@@ -97,7 +104,14 @@ class ChatService:
                     # bila flow mengembalikan URL audio S3/MinIO hasil TTS.
                     modality="audio" if result.audio_url else "text",
                     media_id=greeting_media_id,
+                    audio_duration_ms=result.audio_duration_ms,
                 )
+                # Pindahkan object TTS ke key stabil turunan message_id agar
+                # history bisa me-resolve URL tanpa live response (best-effort).
+                if greeting_media_id is None:
+                    await self._relocate_agent_audio(
+                        conversation.id, message.id, result
+                    )
                 first_message = {
                     "message_id": message.id,
                     "session_id": message.session_id,
@@ -130,7 +144,7 @@ class ChatService:
                    client_key: str | None) -> dict[str, Any]:
         if not self.settings.feature_ai_enabled:
             raise FeatureUnavailableError("AI sedang dinonaktifkan.")
-        conversations = ConversationService(self.session)
+        conversations = ConversationService(self.session, self.settings)
         conversation = await conversations.get_owned_session(
             user_id=user_id, session_id=session_id,
         )
@@ -149,7 +163,14 @@ class ChatService:
             "session": {
                 "session_id": session_id,
                 "runtime_snapshot_id": conversation.runtime_snapshot_id,
-                "history": [{"role": message.role, "text": message.text} for message in history],
+                "history": [
+                    {
+                        "role": message.role,
+                        "text": message.text,
+                        "created_at": message.created_at.isoformat(),
+                    }
+                    for message in history
+                ],
             },
             "persona": context["persona"],
             "ai_configuration": context["ai_configuration"],
@@ -158,6 +179,10 @@ class ChatService:
                 "agent_code": context["agent_code"],
                 "category_id": practice.category_id,
                 "text": text,
+                # Flow Parser membaca storage_key/media_id apa pun modality-nya;
+                # kirim string kosong untuk text agar tidak KeyError di canvas.
+                "media_id": "",
+                "storage_key": "",
             },
             "policy": {
                 "tool_allowlist": list(binding.tool_allowlist),
@@ -182,7 +207,10 @@ class ChatService:
             text=result.response_text,
             modality="audio" if result.audio_url else "text",
             media_id=agent_media_id,
+            audio_duration_ms=result.audio_duration_ms,
         )
+        if agent_media_id is None:
+            await self._relocate_agent_audio(session_id, agent_message.id, result)
         return {
             "session_id": session_id,
             "message_id": agent_message.id,
@@ -203,7 +231,7 @@ class ChatService:
             raise FeatureUnavailableError("AI sedang dinonaktifkan.")
 
         # Validasi session
-        conversations = ConversationService(self.session)
+        conversations = ConversationService(self.session, self.settings)
         conversation = await conversations.get_owned_session(
             user_id=user_id, session_id=session_id,
         )
@@ -238,7 +266,14 @@ class ChatService:
             "session": {
                 "session_id": session_id,
                 "runtime_snapshot_id": conversation.runtime_snapshot_id,
-                "history": [{"role": message.role, "text": message.text} for message in history],
+                "history": [
+                    {
+                        "role": message.role,
+                        "text": message.text,
+                        "created_at": message.created_at.isoformat(),
+                    }
+                    for message in history
+                ],
             },
             "persona": context["persona"],
             "ai_configuration": context["ai_configuration"],
@@ -259,12 +294,15 @@ class ChatService:
             envelope["session"]["client_message_id"] = client_key
 
         result = await self.adapter.run(binding, envelope)
-        # Simpan pesan user (voice) + respons agent dengan media_id
+        # Simpan pesan user (voice) dengan link ke audio-nya sendiri agar
+        # tetap dapat diputar ulang dari history + respons agent.
         user_message = await conversations.append_user_message(
             user_id=user_id,
             session_id=session_id,
             text=text or "[voice message]",
             client_key=client_key,
+            modality="audio",
+            media_id=media_id,
         )
         agent_media_id = await self._resolve_media_id_from_result(result)
         agent_message = await conversations.append_agent_message(
@@ -274,7 +312,10 @@ class ChatService:
             text=result.response_text,
             modality="audio" if result.audio_url else "text",
             media_id=agent_media_id,
+            audio_duration_ms=result.audio_duration_ms,
         )
+        if agent_media_id is None:
+            await self._relocate_agent_audio(session_id, agent_message.id, result)
         return {
             "session_id": session_id,
             "message_id": agent_message.id,
@@ -314,3 +355,69 @@ class ChatService:
             )
         ).scalar_one_or_none()
         return media.id if media else None
+
+    async def _relocate_agent_audio(
+        self,
+        session_id: str,
+        message_id: str,
+        result: "ChatResult | SessionCreateResult",
+    ) -> None:
+        """Pindahkan object TTS ke key stabil turunan message_id (best-effort).
+
+        Live response hanya valid sesaat (presigned URL kedaluwarsa); history
+        membangun ulang URL dari key stabil ``agent_audio_key_pattern``
+        bila bucket public-read. Kegagalan copy tidak menggagalkan chat turn.
+        """
+        if not result.object_key or not result.bucket:
+            return
+        if not self.settings.agent_audio_fallback_enabled:
+            return
+        if result.bucket != self.settings.s3_bucket:
+            # Object di bucket lain dari yang backend kenal — jangan disentuh.
+            return
+        try:
+            import asyncio
+
+            import boto3  # type: ignore[import-untyped]
+            from botocore.client import Config  # type: ignore[import-untyped]
+
+            target_key = self.settings.agent_audio_key_pattern.format(
+                session_id=session_id, message_id=message_id
+            )
+            if target_key == result.object_key:
+                return  # flow sudah menulis di key stabil
+
+            def _copy() -> None:
+                client = boto3.client(
+                    "s3",
+                    endpoint_url=self.settings.s3_endpoint_url,
+                    region_name=self.settings.s3_region,
+                    aws_access_key_id=self.settings.s3_access_key_id,
+                    aws_secret_access_key=self.settings.s3_secret_access_key,
+                    config=Config(
+                        signature_version="s3v4",
+                        s3=(
+                            {"addressing_style": "path"}
+                            if self.settings.s3_force_path_style
+                            else {}
+                        ),
+                    ),
+                )
+                client.copy_object(
+                    Bucket=self.settings.s3_bucket,
+                    Key=target_key,
+                    CopySource={
+                        "Bucket": self.settings.s3_bucket,
+                        "Key": result.object_key,
+                    },
+                )
+
+            await asyncio.to_thread(_copy)
+            self._last_object_key_by_session[session_id] = (
+                result.object_key,
+                target_key,
+            )
+        except Exception as exc:  # best-effort: jangan gagalkan chat turn
+            logger.warning(
+                "Relokasi audio agent gagal (history fallback text): %r", exc
+            )
