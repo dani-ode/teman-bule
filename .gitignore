@@ -10,15 +10,36 @@ secrets/
 # Python
 __pycache__/
 *.py[cod]
+*.egg-info/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .venv/
+pip-wheel-metadata/
 
-# Build and local tooling
+# Test & coverage artefacts
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Build and distribution
 dist/
 build/
-.coverage
-htmlcov/
+
+# Alembic
+alembic/versions/*.pyc
+
+# Docker / Compose
+.docker/
+
+# OS artefacts
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
 .idea/
 .vscode/
+*.swp
+*.swo
+*~
