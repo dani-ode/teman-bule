@@ -1,13 +1,20 @@
 """Connect the authenticated chat route to its PostgreSQL-registered workflow."""
 
 import logging
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from temanbule.modules.catalog.chat_context import chat_context
-from temanbule.modules.catalog.flows import resolve_flow
-from temanbule.modules.conversations.langflow import ChatResult, LangflowChatAdapter
+from temanbule.modules.catalog.flows import FlowBinding, resolve_flow
+from temanbule.modules.conversations.langflow import (
+    ChatResult,
+    ChatStreamEvent,
+    LangflowChatAdapter,
+)
+from temanbule.modules.conversations.models import PracticeSession
 from temanbule.modules.conversations.services import ConversationService
 from temanbule.modules.conversations.session_create import (
     LangflowSessionCreateAdapter,
@@ -19,11 +26,25 @@ from temanbule.platform.errors import (
     ConflictError,
     FeatureUnavailableError,
     NotFoundError,
+    ValidationError,
 )
 from temanbule.platform.security import new_ulid
 from temanbule.platform.settings import Settings
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(slots=True)
+class _PreparedTurn:
+    """Konteks chat turn yang sudah tervalidasi, siap dieksekusi adapter."""
+
+    user_id: str
+    session_id: str
+    binding: FlowBinding
+    envelope: dict[str, Any]
+    practice: PracticeSession
+    turn_input: dict[str, Any]
+    client_key: str | None
 
 
 class ChatService:
@@ -140,8 +161,205 @@ class ChatService:
             "first_message": first_message,
         }
 
+    async def create_session_with_greeting_stream(
+        self, *, user_id: str, agent_code: str, category_id: str
+    ) -> AsyncIterator[ChatStreamEvent]:
+        """Buat session + greeting via SSE: teks sapaan tampil sebelum TTS selesai.
+
+        Session dibuat dan di-flush SEBELUM stream dibuka, sehingga room chat
+        tetap ada (dan dapat di-commit router) apa pun hasil greeting-nya.
+        Greeting sendiri best-effort: bila flow belum terdaftar/gagal,
+        terminal ``failed`` dikirim dengan first_message=None — client cukup
+        masuk room tanpa pesan pembuka.
+
+        Tidak ada retry/replay: greeting one-shot per session; client yang
+        terputus cukup mengambil history via GET .../messages.
+        """
+        conversations = ConversationService(self.session, self.settings)
+        conversation = await conversations.start_practice_session(
+            user_id=user_id, agent_code=agent_code, category_id=category_id,
+        )
+        practice = await conversations.get_practice_session(session_id=conversation.id)
+
+        first_message: dict[str, Any] | None = None
+        try:
+            # begin_nested() = SAVEPOINT: bila greeting gagal, hanya perubahan
+            # di dalam blok ini yang di-rollback; session + practice (di-flush
+            # sebelumnya) TETAP ada — identik jalur sync.
+            async with self.session.begin_nested():
+                if not self.settings.feature_ai_enabled:
+                    raise FeatureUnavailableError("AI sedang dinonaktifkan.")
+                binding = await resolve_flow(
+                    self.session,
+                    environment=self.settings.app_env,
+                    purpose="chat_session_create",
+                )
+                context = await chat_context(
+                    self.session, conversation.runtime_snapshot_id, user_id
+                )
+                envelope = {
+                    "schema_version": binding.input_schema_version,
+                    "request_id": new_ulid(),
+                    "purpose": "chat_session_create",
+                    "user": {"user_id": user_id},
+                    "session": {
+                        "session_id": conversation.id,
+                        "runtime_snapshot_id": conversation.runtime_snapshot_id,
+                    },
+                    "persona": context["persona"],
+                    "ai_configuration": context["ai_configuration"],
+                    "input": {
+                        "agent_code": context["agent_code"],
+                        "category_id": category_id,
+                    },
+                }
+                upstream = self.session_create_adapter.run_stream(binding, envelope)
+                async for event in upstream:
+                    if event.kind == "completed" and event.result is not None:
+                        result = event.result
+                        greeting_media_id = await self._resolve_media_id_from_result(
+                            result
+                        )
+                        message = await conversations.append_agent_message(
+                            session_id=conversation.id,
+                            owner_user_id=user_id,
+                            agent_version_id=practice.agent_version_id,
+                            text=result.response_text,
+                            # Chat mostly audio: greeting disimpan sebagai
+                            # modality 'audio' bila flow mengembalikan TTS.
+                            modality="audio" if result.audio_url else "text",
+                            media_id=greeting_media_id,
+                            audio_duration_ms=result.audio_duration_ms,
+                        )
+                        # Key stabil turunan message_id agar history bisa
+                        # me-resolve URL tanpa live response (best-effort).
+                        if greeting_media_id is None:
+                            await self._relocate_agent_audio(
+                                conversation.id, message.id, result
+                            )
+                        first_message = {
+                            "message_id": message.id,
+                            "session_id": message.session_id,
+                            "role": message.role,
+                            "text": message.text,
+                            "modality": message.modality,
+                            "media_id": message.media_id,
+                            "audio_url": result.audio_url,
+                            "audio_duration_ms": result.audio_duration_ms,
+                            "sequence": message.sequence,
+                            "terminal_state": message.terminal_state,
+                            "created_at": message.created_at.isoformat(),
+                        }
+                        event.data.update({
+                            "session_id": conversation.id,
+                            "kind": conversation.kind,
+                            "state": conversation.state,
+                            "started_at": conversation.started_at.isoformat(),
+                            "agent_code": agent_code,
+                            "category_id": category_id,
+                            "first_message": first_message,
+                        })
+                    elif event.kind == "failed":
+                        event.data.update({
+                            "session_id": conversation.id,
+                            "kind": conversation.kind,
+                            "state": conversation.state,
+                            "started_at": conversation.started_at.isoformat(),
+                            "agent_code": agent_code,
+                            "category_id": category_id,
+                            "first_message": None,
+                        })
+                    yield event
+        except AppError as exc:
+            logger.warning(
+                "Session-create greeting skipped (session kept): %s", exc.code
+            )
+            yield ChatStreamEvent(
+                kind="failed",
+                error=str(exc),
+                data={
+                    "code": exc.code,
+                    "session_id": conversation.id,
+                    "kind": conversation.kind,
+                    "state": conversation.state,
+                    "started_at": conversation.started_at.isoformat(),
+                    "agent_code": agent_code,
+                    "category_id": category_id,
+                    "first_message": None,
+                },
+            )
+
     async def send(self, *, user_id: str, session_id: str, text: str,
                    client_key: str | None) -> dict[str, Any]:
+        prepared = await self._prepare_turn(
+            user_id=user_id, session_id=session_id,
+            turn_input={
+                "modality": "text",
+                "text": text,
+                # Flow Parser membaca storage_key/media_id apa pun modality-nya;
+                # kirim string kosong untuk text agar tidak KeyError di canvas.
+                "media_id": "",
+                "storage_key": "",
+            },
+            client_key=client_key,
+        )
+        # Simpan pesan user + respons agent dengan media_id bila ada
+        result = await self.adapter.run(prepared.binding, prepared.envelope)
+        return await self._persist_turn(prepared, result)
+
+    async def send_voice(
+        self, *, user_id: str, session_id: str, media_id: str,
+        text: str | None, client_key: str | None,
+    ) -> dict[str, Any]:
+        """Kirim voice message: simpan audio metadata + kirim ke Langflow.
+
+        Media harus sudah finalized dan clean. Teks transkrip wajib sudah
+        diisi client (alur 3-hit: STT via flow ``stt`` sebelumnya); Langflow
+        menerima teks tersebut dan menghasilkan respons audio via TTS.
+        """
+        prepared = await self._prepare_voice_turn(
+            user_id=user_id, session_id=session_id, media_id=media_id,
+            text=text, client_key=client_key,
+        )
+        result = await self.adapter.run(prepared.binding, prepared.envelope)
+        return await self._persist_turn(prepared, result)
+
+    async def send_stream(self, *, user_id: str, session_id: str, text: str,
+                          client_key: str | None) -> AsyncIterator[ChatStreamEvent]:
+        """Chat turn teks via SSE: event bertahap, persistensi identik send().
+
+        User message disimpan SEBELUM stream dibuka agar retry client dengan
+        client_key yang sama tidak pernah memanggil ulang Langflow.
+        """
+        prepared = await self._prepare_turn(
+            user_id=user_id, session_id=session_id,
+            turn_input={"modality": "text", "text": text,
+                        "media_id": "", "storage_key": ""},
+            client_key=client_key,
+        )
+        async for event in self._run_turn_stream(prepared):
+            yield event
+
+    async def send_voice_stream(
+        self, *, user_id: str, session_id: str, media_id: str,
+        text: str | None, audio_duration_ms: int | None = None,
+        client_key: str | None,
+    ) -> AsyncIterator[ChatStreamEvent]:
+        """Voice message via SSE: transcript STT muncul lebih awal dari teks/audio."""
+        prepared = await self._prepare_voice_turn(
+            user_id=user_id, session_id=session_id, media_id=media_id,
+            text=text, audio_duration_ms=audio_duration_ms, client_key=client_key,
+        )
+        async for event in self._run_turn_stream(prepared):
+            yield event
+
+    # --- Shared turn pipeline (sync + stream) --------------------------------
+
+    async def _prepare_turn(
+        self, *, user_id: str, session_id: str, turn_input: dict[str, Any],
+        client_key: str | None,
+    ) -> "_PreparedTurn":
+        """Validasi session + bangun envelope chat_turn untuk adapter Langflow."""
         if not self.settings.feature_ai_enabled:
             raise FeatureUnavailableError("AI sedang dinonaktifkan.")
         conversations = ConversationService(self.session, self.settings)
@@ -175,14 +393,9 @@ class ChatService:
             "persona": context["persona"],
             "ai_configuration": context["ai_configuration"],
             "input": {
-                "modality": "text",
                 "agent_code": context["agent_code"],
                 "category_id": practice.category_id,
-                "text": text,
-                # Flow Parser membaca storage_key/media_id apa pun modality-nya;
-                # kirim string kosong untuk text agar tidak KeyError di canvas.
-                "media_id": "",
-                "storage_key": "",
+                **turn_input,
             },
             "policy": {
                 "tool_allowlist": list(binding.tool_allowlist),
@@ -191,54 +404,24 @@ class ChatService:
         }
         if client_key is not None:
             envelope["session"]["client_message_id"] = client_key
-        # Simpan pesan user + respons agent dengan media_id bila ada
-        result = await self.adapter.run(binding, envelope)
-        user_message = await conversations.append_user_message(
-            user_id=user_id,
-            session_id=session_id,
-            text=text,
+        return _PreparedTurn(
+            user_id=user_id, session_id=session_id, binding=binding,
+            envelope=envelope, practice=practice, turn_input=turn_input,
             client_key=client_key,
         )
-        agent_media_id = await self._resolve_media_id_from_result(result)
-        agent_message = await conversations.append_agent_message(
-            session_id=session_id,
-            owner_user_id=user_id,
-            agent_version_id=practice.agent_version_id,
-            text=result.response_text,
-            modality="audio" if result.audio_url else "text",
-            media_id=agent_media_id,
-            audio_duration_ms=result.audio_duration_ms,
-        )
-        if agent_media_id is None:
-            await self._relocate_agent_audio(session_id, agent_message.id, result)
-        return {
-            "session_id": session_id,
-            "message_id": agent_message.id,
-            "user_message_id": user_message.id,
-            **result.model_dump(),
-        }
 
-    async def send_voice(
+    async def _prepare_voice_turn(
         self, *, user_id: str, session_id: str, media_id: str,
-        text: str | None, client_key: str | None,
-    ) -> dict[str, Any]:
-        """Kirim voice message: simpan audio metadata + kirim ke Langflow.
+        text: str | None, audio_duration_ms: int | None = None,
+        client_key: str | None,
+    ) -> "_PreparedTurn":
+        """_prepare_turn untuk voice: validasi media + transkrip wajib.
 
-        Media harus sudah finalized dan clean. Langflow akan melakukan STT
-        dan menghasilkan respons audio via TTS.
+        Alur 3-hit client (upload → transcribe → kirim): STT sudah terjadi
+        via flow ``stt`` sebelum turn ini, sehingga teks transkrip WAJIB
+        dikirim client dan tersimpan final sejak INSERT — tidak ada
+        placeholder, tidak ada UPDATE (tabel messages tetap append-only).
         """
-        if not self.settings.feature_ai_enabled:
-            raise FeatureUnavailableError("AI sedang dinonaktifkan.")
-
-        # Validasi session
-        conversations = ConversationService(self.session, self.settings)
-        conversation = await conversations.get_owned_session(
-            user_id=user_id, session_id=session_id,
-        )
-        if conversation.state != "active":
-            raise ConflictError("Session sudah tidak aktif.", code="SESSION_CLOSED")
-
-        # Validasi media ownership dan status
         media = await self._get_owned_media(user_id, media_id)
         if media.status != "finalized" or media.scan_state != "clean":
             raise ConflictError(
@@ -250,78 +433,144 @@ class ChatService:
                 "Hanya media audio yang dapat dikirim sebagai voice message.",
                 code="MEDIA_TYPE_INVALID",
             )
-
-        # Build Langflow envelope dengan audio
-        binding = await resolve_flow(
-            self.session, environment=self.settings.app_env, purpose="chat_turn",
-        )
-        context = await chat_context(self.session, conversation.runtime_snapshot_id, user_id)
-        history = await conversations.list_messages(user_id=user_id, session_id=session_id)
-        practice = await conversations.get_practice_session(session_id=session_id)
-
-        envelope = {
-            "schema_version": binding.input_schema_version,
-            "request_id": new_ulid(), "purpose": "chat_turn",
-            "user": {"user_id": user_id},
-            "session": {
-                "session_id": session_id,
-                "runtime_snapshot_id": conversation.runtime_snapshot_id,
-                "history": [
-                    {
-                        "role": message.role,
-                        "text": message.text,
-                        "created_at": message.created_at.isoformat(),
-                    }
-                    for message in history
-                ],
-            },
-            "persona": context["persona"],
-            "ai_configuration": context["ai_configuration"],
-            "input": {
+        if text is None or not text.strip():
+            raise ValidationError(
+                "Voice message wajib menyertakan teks transkrip.",
+                details=[{"field": "text", "message": "wajib diisi"}],
+            )
+        return await self._prepare_turn(
+            user_id=user_id, session_id=session_id,
+            turn_input={
                 "modality": "audio",
-                "agent_code": context["agent_code"],
-                "category_id": practice.category_id,
                 "media_id": media_id,
                 "storage_key": media.storage_key,
-                "text": text,  # Optional: pre-transcribed text atau hint
+                "text": text,  # Transkrip hasil flow stt (alur 3-hit)
+                "audio_duration_ms": audio_duration_ms,
             },
-            "policy": {
-                "tool_allowlist": list(binding.tool_allowlist),
-                "retrieval_scopes": [], "output_schema": binding.output_schema_version,
-            },
-        }
-        if client_key is not None:
-            envelope["session"]["client_message_id"] = client_key
-
-        result = await self.adapter.run(binding, envelope)
-        # Simpan pesan user (voice) dengan link ke audio-nya sendiri agar
-        # tetap dapat diputar ulang dari history + respons agent.
-        user_message = await conversations.append_user_message(
-            user_id=user_id,
-            session_id=session_id,
-            text=text or "[voice message]",
             client_key=client_key,
-            modality="audio",
-            media_id=media_id,
+        )
+
+    async def _persist_turn(
+        self, prepared: "_PreparedTurn", result: ChatResult,
+    ) -> dict[str, Any]:
+        """Simpan pesan user + respons agent; identik untuk sync dan stream.
+
+        Pesan user voice di-link ke media-nya sendiri agar tetap dapat
+        diputar ulang dari history.
+        """
+        conversations = ConversationService(self.session, self.settings)
+        turn_input = prepared.turn_input
+        user_message = await conversations.append_user_message(
+            user_id=prepared.user_id,
+            session_id=prepared.session_id,
+            text=turn_input["text"],
+            client_key=prepared.client_key,
+            modality=turn_input["modality"],
+            media_id=turn_input.get("media_id") or None,
+            audio_duration_ms=turn_input.get("audio_duration_ms"),
         )
         agent_media_id = await self._resolve_media_id_from_result(result)
         agent_message = await conversations.append_agent_message(
-            session_id=session_id,
-            owner_user_id=user_id,
-            agent_version_id=practice.agent_version_id,
+            session_id=prepared.session_id,
+            owner_user_id=prepared.user_id,
+            agent_version_id=prepared.practice.agent_version_id,
             text=result.response_text,
             modality="audio" if result.audio_url else "text",
             media_id=agent_media_id,
             audio_duration_ms=result.audio_duration_ms,
         )
         if agent_media_id is None:
-            await self._relocate_agent_audio(session_id, agent_message.id, result)
+            await self._relocate_agent_audio(
+                prepared.session_id, agent_message.id, result
+            )
         return {
-            "session_id": session_id,
+            "session_id": prepared.session_id,
             "message_id": agent_message.id,
             "user_message_id": user_message.id,
             **result.model_dump(),
         }
+
+    async def _run_turn_stream(
+        self, prepared: "_PreparedTurn",
+    ) -> AsyncIterator[ChatStreamEvent]:
+        """Konsumsi run_stream() adapter + persistensi terkait event.
+
+        Persistensi user message terjadi SEBELUM generator adapter diminta
+        frame pertama (langsung setelah event ``started`` diterima), sehingga
+        retry client dengan client_key yang sama terdeteksi sebelum ada
+        pemanggilan ulang provider. Teks pesan user voice adalah transkrip
+        final dari flow ``stt`` (alur 3-hit), tersimpan sejak INSERT.
+        """
+        conversations = ConversationService(self.session, self.settings)
+        user_message = None
+        agent_persisted = False
+        upstream = self.adapter.run_stream(prepared.binding, prepared.envelope)
+        # Tarik event pertama (started) SEBELUM persistensi user message —
+        # pemanggilan HTTP ke Langflow baru terjadi saat frame berikutnya
+        # diminta (lazy pull), jadi duplikasi client_key terdeteksi dulu.
+        first = await anext(upstream, None)
+        if first is not None and first.kind == "started":
+            try:
+                user_message = await conversations.append_user_message(
+                    user_id=prepared.user_id,
+                    session_id=prepared.session_id,
+                    text=prepared.turn_input["text"],
+                    client_key=prepared.client_key,
+                    modality=prepared.turn_input["modality"],
+                    media_id=prepared.turn_input.get("media_id") or None,
+                    audio_duration_ms=prepared.turn_input.get("audio_duration_ms"),
+                )
+            except ConflictError:
+                # Replay client_key: Langflow belum dipanggil — jangan
+                # mulai turn baru; sinyalkan client ambil history saja.
+                yield ChatStreamEvent(
+                    kind="failed",
+                    error="Pesan dengan client_message_id ini sudah ada.",
+                    data={"code": "DUPLICATE_MESSAGE"},
+                )
+                return
+            first.data["user_message_id"] = user_message.id
+            yield first
+        async for event in upstream:
+            if event.kind == "completed" and event.result is not None:
+                try:
+                    agent_media_id = await self._resolve_media_id_from_result(event.result)
+                    agent_message = await conversations.append_agent_message(
+                        session_id=prepared.session_id,
+                        owner_user_id=prepared.user_id,
+                        agent_version_id=prepared.practice.agent_version_id,
+                        text=event.result.response_text,
+                        modality="audio" if event.result.audio_url else "text",
+                        media_id=agent_media_id,
+                        audio_duration_ms=event.result.audio_duration_ms,
+                    )
+                    if agent_media_id is None:
+                        await self._relocate_agent_audio(
+                            prepared.session_id, agent_message.id, event.result
+                        )
+                except AppError as exc:
+                    logger.warning("persist respons agent gagal: %s", exc.code)
+                    yield ChatStreamEvent(
+                        kind="failed",
+                        error="Respons agent belum dapat disimpan.",
+                        data={"code": exc.code},
+                    )
+                    return
+                agent_persisted = True
+                event.data.update({
+                    "session_id": prepared.session_id,
+                    "message_id": agent_message.id,
+                    "user_message_id": user_message.id if user_message else None,
+                    **event.result.model_dump(),
+                })
+            yield event
+        if not agent_persisted and user_message is not None:
+            # Turn gagal di tengah: pesan user sudah commit (audit trail),
+            # tidak ada respons agent — client menerima terminal failed.
+            logger.info(
+                "chat turn stream tanpa completed (session=%s)",
+                prepared.session_id,
+            )
 
     async def _get_owned_media(self, user_id: str, media_id: str) -> MediaObject:
         """Ambil media dengan ownership check."""

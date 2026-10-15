@@ -10,7 +10,10 @@ Kontrak (implementation-plan.md Phase 5, api-events.md, realtime-podcast.md):
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from temanbule.modules.media.stt import LangflowSttAdapter
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -176,6 +179,53 @@ class MediaService:
             client_key=client_key,
         )
         return message.id
+
+    async def transcribe_audio(
+        self,
+        *,
+        user_id: str,
+        media_id: str,
+        stt: "LangflowSttAdapter",
+        environment: str,
+    ) -> str:
+        """Transkripsi voice message via flow Langflow purpose ``stt``.
+
+        Dipakai endpoint ``POST /v1/media/{media_id}:transcribe`` pada alur
+        3-hit client (upload → transcribe → kirim pesan). Tidak menulis apa
+        pun ke DB — transkrip dikembalikan ke client dan dikirim kembali
+        sebagai ``text`` saat chat turn, sehingga pesan user tersimpan
+        dengan teks final sejak INSERT.
+        """
+        from temanbule.modules.catalog.flows import resolve_flow
+
+        media = await self._owned_media(user_id, media_id)
+        if media.status != STATUS_FINALIZED or media.scan_state != SCAN_CLEAN:
+            raise ConflictError(
+                "Media belum dapat dipakai (scan/status).",
+                code="MEDIA_NOT_READY",
+            )
+        if media.media_type != "audio":
+            raise ConflictError(
+                "Hanya media audio yang dapat ditranskripsi.",
+                code="MEDIA_TYPE_INVALID",
+            )
+        binding = await resolve_flow(
+            self.session, environment=environment, purpose="stt"
+        )
+        result = await stt.run(
+            binding,
+            {
+                "schema_version": binding.input_schema_version,
+                "request_id": new_ulid(),
+                "purpose": "stt",
+                "user": {"user_id": user_id},
+                "input": {
+                    "media_id": media.id,
+                    "storage_key": media.storage_key,
+                },
+            },
+        )
+        return result.text
 
     async def get_media(self, *, user_id: str, media_id: str) -> MediaObject:
         return await self._owned_media(user_id, media_id)

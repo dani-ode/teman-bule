@@ -116,6 +116,7 @@ class ConversationService:
         client_key: str | None,
         modality: str = "text",
         media_id: str | None = None,
+        audio_duration_ms: int | None = None,
     ) -> ConversationMessage:
         """Simpan pesan user; idempoten per client_key dalam session.
 
@@ -151,6 +152,7 @@ class ConversationService:
             text=text,
             modality=modality,
             media_id=media_id,
+            audio_duration_ms=audio_duration_ms,
             sequence=await self._next_sequence(session_id),
             client_key=client_key,
         )

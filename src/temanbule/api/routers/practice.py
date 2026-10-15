@@ -11,16 +11,24 @@ Chat resolves the active PostgreSQL registry entry and calls Langflow.
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+import json
+import logging
+from collections.abc import AsyncIterator
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Query, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from temanbule.api.deps import CurrentUser, SessionDep, SettingsDep
 from temanbule.modules.conversations.chat import ChatService
+from temanbule.modules.conversations.langflow import ChatStreamEvent
 from temanbule.modules.conversations.models import ConversationSession, PracticeCategory
 from temanbule.modules.conversations.services import ConversationService
+from temanbule.platform.errors import AppError
 from temanbule.platform.settings import Settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/practice", tags=["practice"])
 
@@ -80,7 +88,11 @@ class CreateMessageRequest(BaseModel):
 
 class CreateVoiceMessageRequest(BaseModel):
     media_id: str = Field(min_length=1, max_length=26)
-    text: str | None = Field(default=None, max_length=8000)
+    # Teks transkrip hasil POST /v1/media/{media_id}:transcribe (alur 3-hit);
+    # wajib agar pesan user tersimpan dengan teks final sejak INSERT.
+    text: str = Field(min_length=1, max_length=8000)
+    # Durasi audio dari client (recorder) — disimpan saat INSERT, append-only.
+    audio_duration_ms: int | None = Field(default=None, ge=0)
     client_message_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
@@ -125,6 +137,43 @@ async def create_session(
     )
     await session.commit()
     return CreateSessionResponse(**result)
+
+
+@router.post("/sessions:stream")
+async def create_session_stream(
+    body: CreateSessionRequest,
+    current_user: CurrentUser,
+    session: SessionDep,
+    settings: SettingsDep,
+) -> StreamingResponse:
+    """Buat session + greeting via SSE (kontrak api-events.md Streaming).
+
+    Event: ``started`` → ``text_delta`` (teks greeting, tersedia sebelum
+    TTS) → ``usage_updated`` → terminal ``completed`` (berisi session_id,
+    first_message, dst — payload identik respons sync) atau ``failed``.
+    Session tetap ter-commit apa pun hasil greeting-nya (best-effort).
+    """
+
+    async def chunks() -> AsyncIterator[str]:
+        service = ChatService(session, settings)
+        event_id = 0
+        try:
+            async for event in service.create_session_with_greeting_stream(
+                user_id=current_user.id,
+                agent_code=body.agent_code,
+                category_id=body.category_id,
+            ):
+                event_id += 1
+                yield _format_sse(event_id, event.kind, _event_payload(event))
+                if event.kind in ("completed", "failed"):
+                    await _safe_commit(session)
+                    return
+        except AppError as exc:
+            event_id += 1
+            yield _sse_error_event(event_id, exc)
+            await _safe_commit(session)
+
+    return _sse_response(chunks())
 
 
 @router.get("/sessions", response_model=list[SessionListItemResponse])
@@ -211,7 +260,7 @@ async def create_voice_message(
     session: SessionDep,
     settings: SettingsDep,
 ) -> dict[str, object]:
-    """Kirim voice message; Langflow melakukan STT + generate respons audio."""
+    """Kirim voice message; teks transkrip wajib (hasil transcribe), respons audio via TTS."""
     result = await ChatService(session, settings).send_voice(
         user_id=current_user.id,
         session_id=session_id,
@@ -221,6 +270,148 @@ async def create_voice_message(
     )
     await session.commit()
     return result
+
+
+# --- Chat SSE (Workflow API mode="stream") ---------------------------------
+#
+# Kontrak api-events.md: started → nol/lebih transcript/text_delta/
+# usage_updated → tepat satu terminal (completed/failed). Teks jawaban dan
+# transcript STT tersedia jauh sebelum TTS+upload selesai, sehingga klien
+# tidak lagi menunggu respons penuh seperti mode sync.
+#
+# Event id berupa sequence per koneksi (1, 2, ...); replay Last-Event-ID
+# belum didukung — reconnect setelah terminal cukup mengambil history via
+# GET .../messages (kontrak api-events.md: reconnect tidak pernah
+# menjalankan ulang provider invocation).
+
+def _format_sse(event_id: int, event: str, data: dict[str, Any]) -> str:
+    return f"id: {event_id}\nevent: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def _sse_error_event(event_id: int, exc: AppError) -> str:
+    """Kegagalan sebelum stream terbuka tetap disampaikan sebagai event SSE."""
+    return _format_sse(event_id, "failed", {
+        "code": exc.code,
+        "message": str(exc),
+        "status_code": exc.status_code,
+    })
+
+
+async def _safe_commit(session: Any) -> None:
+    """Commit dengan proteksi: kegagalan DB tidak boleh memutus SSE secara kasar.
+
+    Kegagalan commit (mis. DBAPIError) dicatat dan session di-rollback agar
+    koneksi bersih; stream sudah selesai mengirim event terminal sehingga
+    client tidak terganggu oleh exception yang bocor ke ASGI.
+    """
+    try:
+        await session.commit()
+    except Exception:  # noqa: BLE001 — jangan biarkan exception DB memutus stream
+        logger.exception("gagal commit setelah terminal SSE event")
+        try:
+            await session.rollback()
+        except Exception:  # noqa: BLE001
+            logger.exception("gagal rollback setelah commit SSE gagal")
+
+
+def _sse_response(chunks: AsyncIterator[str]) -> StreamingResponse:
+    return StreamingResponse(
+        chunks,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            # Nonaktifkan buffering proxy (nginx/Apache) agar event tiba bertahap.
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post("/sessions/{session_id}/messages:stream")
+async def create_message_stream(
+    session_id: str,
+    body: CreateMessageRequest,
+    current_user: CurrentUser,
+    session: SessionDep,
+    settings: SettingsDep,
+) -> StreamingResponse:
+    """Chat turn teks via SSE (kontrak api-events.md Streaming).
+
+    Event: ``started`` → ``text_delta`` (respons teks LLM, tersedia sebelum
+    TTS) → ``usage_updated`` → terminal ``completed`` (berisi message_id,
+    audio_url, dst — payload identik respons sync) atau ``failed``.
+    """
+
+    async def chunks() -> AsyncIterator[str]:
+        service = ChatService(session, settings)
+        event_id = 0
+        try:
+            async for event in service.send_stream(
+                user_id=current_user.id,
+                session_id=session_id,
+                text=body.text,
+                client_key=body.client_message_id,
+            ):
+                event_id += 1
+                yield _format_sse(event_id, event.kind, _event_payload(event))
+                if event.kind in ("completed", "failed"):
+                    await _safe_commit(session)
+                    return
+        except AppError as exc:
+            event_id += 1
+            yield _sse_error_event(event_id, exc)
+            await _safe_commit(session)
+
+    return _sse_response(chunks())
+
+
+@router.post("/sessions/{session_id}/voice-messages:stream")
+async def create_voice_message_stream(
+    session_id: str,
+    body: CreateVoiceMessageRequest,
+    current_user: CurrentUser,
+    session: SessionDep,
+    settings: SettingsDep,
+) -> StreamingResponse:
+    """Voice message via SSE: teks/audio respons agent tampil bertahap.
+
+    Teks transkrip user sudah final di body request (alur 3-hit), sehingga
+    tidak ada lagi event ``transcript`` dari STT di dalam flow chat_turn.
+    """
+
+    async def chunks() -> AsyncIterator[str]:
+        service = ChatService(session, settings)
+        event_id = 0
+        try:
+            async for event in service.send_voice_stream(
+                user_id=current_user.id,
+                session_id=session_id,
+                media_id=body.media_id,
+                text=body.text,
+                audio_duration_ms=body.audio_duration_ms,
+                client_key=body.client_message_id,
+            ):
+                event_id += 1
+                yield _format_sse(event_id, event.kind, _event_payload(event))
+                if event.kind in ("completed", "failed"):
+                    await _safe_commit(session)
+                    return
+        except AppError as exc:
+            event_id += 1
+            yield _sse_error_event(event_id, exc)
+            await _safe_commit(session)
+
+    return _sse_response(chunks())
+
+
+def _event_payload(event: ChatStreamEvent) -> dict[str, Any]:
+    payload: dict[str, Any] = dict(event.data)
+    if event.text is not None:
+        payload["text"] = event.text
+    if event.usage is not None:
+        payload["usage"] = event.usage
+    if event.error is not None:
+        payload.setdefault("message", event.error)
+    return payload
 
 
 @router.get("/sessions/{session_id}/messages", response_model=list[MessageResponse])

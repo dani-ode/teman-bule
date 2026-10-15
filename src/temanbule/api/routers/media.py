@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from temanbule.api.deps import CurrentUser, SessionDep, SettingsDep
 from temanbule.modules.media.scan_adapter import build_malware_scanner
 from temanbule.modules.media.services import MediaService
+from temanbule.modules.media.stt import LangflowSttAdapter
 from temanbule.platform.errors import FeatureUnavailableError
 
 router = APIRouter(prefix="/v1/media", tags=["media"])
@@ -39,6 +40,10 @@ class MediaResponse(BaseModel):
     media_type: str
     status: str
     scan_state: str
+
+
+class TranscribeResponse(BaseModel):
+    text: str
 
 
 @router.post("/uploads", response_model=UploadResponse, status_code=201)
@@ -102,3 +107,29 @@ async def get_download_url(
             "Signed URL storage belum dikonfigurasi (menunggu DEC-15).",
         )
     return {"download_url": factory(media.storage_key)}
+
+
+@router.post("/{media_id}:transcribe", response_model=TranscribeResponse)
+async def transcribe_media(
+    media_id: str,
+    current_user: CurrentUser,
+    session: SessionDep,
+    settings: SettingsDep,
+) -> TranscribeResponse:
+    """Transkripsi voice message via flow Langflow purpose ``stt`` (alur 3-hit).
+
+    Dipanggil client setelah upload+finalize selesai dan sebelum mengirim
+    chat turn: transkrip yang dikembalikan dikirim kembali sebagai ``text``
+    pada ``POST .../voice-messages``, sehingga pesan user tersimpan dengan
+    teks final sejak INSERT. Tidak menulis apa pun ke DB.
+    """
+    if not settings.feature_ai_enabled:
+        raise FeatureUnavailableError("AI sedang dinonaktifkan.")
+    service = MediaService(session)
+    text = await service.transcribe_audio(
+        user_id=current_user.id,
+        media_id=media_id,
+        stt=LangflowSttAdapter(settings),
+        environment=settings.app_env,
+    )
+    return TranscribeResponse(text=text)

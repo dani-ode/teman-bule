@@ -1,6 +1,7 @@
 from langflow.custom import Component
 from langflow.io import DataInput, Output
-from langflow.schema import Data
+from langflow.schema import Data, Message
+import json
 
 class CombineJSONDataComponent(Component):
     display_name = "Combine 2 JSON (Data)"
@@ -17,16 +18,21 @@ class CombineJSONDataComponent(Component):
 
     outputs = [
         Output(display_name="Combined Data", name="combined_data", method="combine_data"),
+        Output(display_name="Combined JSON String", name="json_string", method="to_json_string"),
     ]
 
     def combine_data(self) -> Data:
         merged_payload = {}
-        
-        # Iterasi seluruh data input dan gabungkan dictionary-nya
         for item in self.input_data:
             if isinstance(item, Data) and isinstance(item.data, dict):
-                # Memastikan kita hanya menggabungkan inner payload, bukan meta-keys
                 merged_payload.update(item.data)
-                
-        # Kembalikan sebagai Data object tunggal yang baru dan bersih
         return Data(data=merged_payload)
+
+    def to_json_string(self) -> Message:
+        """Output sebagai Message string untuk ChatOutput."""
+        merged_payload = {}
+        for item in self.input_data:
+            if isinstance(item, Data) and isinstance(item.data, dict):
+                merged_payload.update(item.data)
+        # Return sebagai Message dengan text berisi JSON string
+        return Message(text=json.dumps(merged_payload, ensure_ascii=False))
