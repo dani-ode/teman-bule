@@ -74,15 +74,17 @@ class AuthService:
             )
         existing = await self.repo.get_user_by_email(normalized)
         if existing is not None:
-            # Anti-enumeration: sukses generik tanpa membocorkan keberadaan email.
             record_audit(
                 self.session,
                 actor="anonymous",
                 action="auth.register.duplicate",
-                result="success",
+                result="conflict",
                 correlation_id=correlation_id,
             )
-            return
+            raise ConflictError(
+                "Email sudah terdaftar. Silakan login atau reset password.",
+                code="EMAIL_ALREADY_REGISTERED",
+            )
 
         now = datetime.now(UTC)
         user = User(

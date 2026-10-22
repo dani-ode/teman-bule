@@ -63,6 +63,20 @@ async def test_register_and_verify_email(session):
 
 
 @pytest.mark.skipif(not DATABASE_URL, reason="TEST_DATABASE_URL tidak diset")
+async def test_register_duplicate_rejected(session):
+    """Register ulang dengan email yang sama → 409 Conflict eksplisit."""
+    settings = _make_settings()
+    auth = AuthService(session, settings)
+    email = "test-duplicate@example.com"
+    await auth.register(email=email, password="supersecretpassword1")  # noqa: S106 - test fixture
+
+    from temanbule.platform.errors import ConflictError
+
+    with pytest.raises(ConflictError, match="sudah terdaftar"):
+        await auth.register(email=email, password="supersecretpassword1")  # noqa: S106 - test fixture
+
+
+@pytest.mark.skipif(not DATABASE_URL, reason="TEST_DATABASE_URL tidak diset")
 async def test_login_unverified_rejected(session):
     settings = _make_settings()
     auth = AuthService(session, settings)

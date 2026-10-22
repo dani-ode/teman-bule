@@ -41,17 +41,89 @@ _PATHS = {
 _BODIES = {
     "email_verify": (
         "Halo,\n\n"
-        "Ketuk link berikut untuk memverifikasi email Anda "
+        "Klik tombol berikut untuk memverifikasi email Anda "
         "(akan terbuka di aplikasi Teman Bule):\n{link}\n\n"
         "Link berlaku 30 menit. Abaikan email ini bila Anda tidak merasa mendaftar."
     ),
     "password_reset": (
         "Halo,\n\n"
-        "Ketuk link berikut untuk mengatur ulang password Anda "
+        "Klik tombol berikut untuk mengatur ulang password Anda "
         "(akan terbuka di aplikasi Teman Bule):\n{link}\n\n"
         "Link berlaku 30 menit. Abaikan email ini bila Anda tidak meminta reset password."
     ),
 }
+
+_BUTTON_LABELS = {
+    "email_verify": "Verifikasi Email",
+    "password_reset": "Reset Password",
+}
+
+# Template HTML email (inline CSS untuk kompatibilitas email client).
+# String di-concat per-baris agar mematuhi batas panjang baris lint.
+_HTML_TEMPLATE = (
+    '<!DOCTYPE html>\n<html lang="id">\n<head><meta charset="utf-8">'
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
+    "</head>\n"
+    '<body style="margin:0;padding:0;background-color:#f4f4f5;'
+    'font-family:Arial,Helvetica,sans-serif;">\n'
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+    'style="background-color:#f4f4f5;padding:24px 0;">\n'
+    '<tr><td align="center">\n'
+    '<table role="presentation" width="480" cellpadding="0" cellspacing="0" '
+    'style="background-color:#ffffff;border-radius:8px;padding:32px;">\n'
+    "<tr><td>\n"
+    '<h1 style="margin:0 0 16px;font-size:20px;color:#18181b;">{heading}</h1>\n'
+    '<p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#3f3f46;">'
+    "{intro}</p>\n"
+    '<table role="presentation" cellpadding="0" cellspacing="0" '
+    'style="margin:0 0 24px;">\n'
+    '<tr><td align="center" bgcolor="#2563eb" style="border-radius:6px;">\n'
+    '<a href="{link}" target="_blank" style="display:inline-block;'
+    "padding:12px 32px;font-size:16px;font-weight:bold;color:#ffffff;"
+    'text-decoration:none;border-radius:6px;">{button}</a>\n'
+    "</td></tr>\n</table>\n"
+    '<p style="margin:0 0 8px;font-size:12px;line-height:1.6;color:#71717a;">'
+    "{footnote}</p>\n"
+    '<p style="margin:0;font-size:12px;line-height:1.6;color:#a1a1aa;'
+    'word-break:break-all;">Bila tombol tidak berfungsi, salin link ini ke '
+    "browser:<br>{link}</p>\n"
+    "</td></tr>\n</table>\n</td></tr>\n</table>\n</body>\n</html>\n"
+)
+
+_HTML_CONTENT = {
+    "email_verify": {
+        "heading": "Verifikasi email Anda",
+        "intro": (
+            "Klik tombol di bawah untuk memverifikasi email Anda "
+            "(akan terbuka di aplikasi Teman Bule)."
+        ),
+        "footnote": (
+            "Link berlaku 30 menit. Abaikan email ini bila Anda tidak merasa mendaftar."
+        ),
+    },
+    "password_reset": {
+        "heading": "Reset password Anda",
+        "intro": (
+            "Klik tombol di bawah untuk mengatur ulang password Anda "
+            "(akan terbuka di aplikasi Teman Bule)."
+        ),
+        "footnote": (
+            "Link berlaku 30 menit. "
+            "Abaikan email ini bila Anda tidak meminta reset password."
+        ),
+    },
+}
+
+
+def _html_body(purpose: str, link: str) -> str:
+    content = _HTML_CONTENT[purpose]
+    return _HTML_TEMPLATE.format(
+        heading=content["heading"],
+        intro=content["intro"],
+        footnote=content["footnote"],
+        button=_BUTTON_LABELS[purpose],
+        link=link,
+    )
 
 
 def _app_link(settings: Settings, path: str, token: str) -> str:
@@ -129,7 +201,10 @@ async def handle_auth_email_requested(
 
     link = _app_link(settings, _PATHS[purpose], token)
     body = _BODIES[purpose].format(link=link)
+    html_body = _html_body(purpose, link)
 
     mailer = SmtpMailer(settings)
-    await mailer.send(to_address=email, subject=_SUBJECTS[purpose], body=body)
+    await mailer.send(
+        to_address=email, subject=_SUBJECTS[purpose], body=body, html_body=html_body
+    )
     logger.info("auth_email_sent", extra={"purpose": purpose})

@@ -18,13 +18,22 @@ class SmtpMailer:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
 
-    async def send(self, *, to_address: str, subject: str, body: str) -> None:
+    async def send(
+        self,
+        *,
+        to_address: str,
+        subject: str,
+        body: str,
+        html_body: str | None = None,
+    ) -> None:
         s = self._settings
         message = EmailMessage()
         message["From"] = f"{s.mail_from_name} <{s.mail_from_address}>"
         message["To"] = to_address
         message["Subject"] = subject
         message.set_content(body)
+        if html_body is not None:
+            message.add_alternative(html_body, subtype="html")
 
         kwargs: dict[str, Any] = {
             "hostname": s.mail_host,
