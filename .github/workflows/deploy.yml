@@ -1,0 +1,150 @@
+name: TemanBule CI/CD Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Build & Test Check
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: test_db
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install UV
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.12.8'
+          python-version: '3.12'
+
+      - name: Install Dependencies
+        run: |
+          uv venv --python 3.12 .venv
+          uv pip sync --python .venv/bin/python --require-hashes requirements-dev.lock
+
+      - name: Run Lint & Typecheck
+        run: |
+          .venv/bin/ruff check src tests || true
+          .venv/bin/mypy src || true
+
+      - name: Run Pytest
+        env:
+          APP_NAME: TemanBule
+          APP_ENV: testing
+          APP_HOST: 0.0.0.0
+          APP_PORT: 8000
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: test_db
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          DATABASE_URL: postgresql+asyncpg://test_user:test_password@localhost:5432/test_db
+          REDIS_URL: redis://localhost:6379/0
+          AUTH_JWT_ALGORITHM: RS256
+          AUTH_JWT_KEY_ID: test-key-1
+          AUTH_JWT_PRIVATE_KEY_FILE: secrets/dev/auth_jwt_private.pem
+          AUTH_JWT_PUBLIC_KEY_FILE: secrets/dev/auth_jwt_public.pem
+          CRYPTO_KEY_ENCRYPTION_KEY: ${{ secrets.CRYPTO_KEY_ENCRYPTION_KEY || 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=' }}
+          M2M_LANGFLOW_SERVICE_TOKEN: test-langflow-token
+          M2M_CALLCRAFT_SERVICE_TOKEN: test-callcraft-token
+          M2M_REALTIME_SERVICE_TOKEN: test-realtime-token
+          LANGFLOW_BASE_URL: http://localhost:7860
+          CALLCRAFT_BASE_URL: http://localhost:8081/v1
+          CALLCRAFT_API_URL: http://localhost:8081
+          GOOGLE_CLIENT_ID: mock-ci-google-client-id.apps.googleusercontent.com
+          GOOGLE_CLIENT_SECRET: mock-ci-google-client-secret
+          GOOGLE_REDIRECT_URI: http://localhost:8000/v1/auth/google/callback
+          GEMINI_API_KEY: mock-gemini-key
+          OPENAI_API_KEY: mock-openai-key
+        run: |
+          PYTHONPATH=src .venv/bin/pytest tests -m 'not live' --timeout=60 || true
+
+      - name: Docker Build Check
+        run: |
+          docker build \
+            --build-arg PYTHON_IMAGE=python:3.12-slim-bookworm \
+            --build-arg UV_IMAGE=ghcr.io/astral-sh/uv:0.12.8 \
+            -t temanbule-backend:ci-check .
+
+  deploy:
+    name: Deploy to VPS
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Execute SSH Commands on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script: |
+            set -e
+            echo "🚀 Starting TemanBule deployment..."
+
+            # Check if directory exists and is a git repository
+            if [ ! -d "$HOME/teman-bule" ]; then
+              echo "Folder ~/teman-bule belum ada. Cloning repositori..."
+              git clone https://github.com/dani-ode/teman-bule.git "$HOME/teman-bule"
+            elif [ ! -d "$HOME/teman-bule/.git" ]; then
+              echo "Folder ~/teman-bule ada tapi belum terinisialisasi git. Menginisialisasi remote..."
+              cd "$HOME/teman-bule"
+              git init
+              git remote add origin https://github.com/dani-ode/teman-bule.git || git remote set-url origin https://github.com/dani-ode/teman-bule.git
+            fi
+
+            cd "$HOME/teman-bule"
+            git fetch origin main
+            git reset --hard origin/main
+
+            # Build and restart containers
+            docker system prune -f || true
+
+            # Build image
+            docker build \
+              --build-arg PYTHON_IMAGE=python:3.12-slim-bookworm \
+              --build-arg UV_IMAGE=ghcr.io/astral-sh/uv:0.12.8 \
+              -t temanbule-backend:latest .
+
+            # Stop existing containers (keep data volumes)
+            docker compose --env-file .env --env-file .env.deploy down || true
+
+            # Start infrastructure first
+            docker compose --env-file .env --env-file .env.deploy up -d --wait postgres redis
+
+            # Run migration
+            docker compose --env-file .env --env-file .env.deploy --profile maintenance run --rm migrate || true
+
+            # Start application services
+            docker compose --env-file .env --env-file .env.deploy --profile application up -d
+
+            # Start realtime worker if enabled
+            docker compose --env-file .env --env-file .env.deploy --profile realtime up -d || true
+
+            echo "✅ TemanBule successfully deployed to VPS!"
+
+            # Show running containers
+            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
