@@ -215,6 +215,21 @@ def validate_conversation_persist_extraction(arguments: dict[str, Any]) -> None:
             _fail("extraction.evidence_message_ids", "item harus ULID valid")
 
 
+def validate_conversation_get_messages(arguments: dict[str, Any]) -> None:
+    _reject_unknown(arguments, {"session_id", "source_start", "source_end"})
+    _req_ulid(arguments, "session_id")
+    start = arguments.get("source_start")
+    if not isinstance(start, int) or isinstance(start, bool) or start < 1:
+        _fail("source_start", "wajib integer >= 1")
+    end = arguments.get("source_end")
+    if not isinstance(end, int) or isinstance(end, bool) or end < 1:
+        _fail("source_end", "wajib integer >= 1")
+    if end < start:
+        _fail("source_end", "harus >= source_start")
+    if end - start + 1 > MAX_MESSAGE_IDS:
+        _fail("source_end", f"rentang melebihi {MAX_MESSAGE_IDS} pesan")
+
+
 def validate_toefl_record_evaluation(arguments: dict[str, Any]) -> None:
     _reject_unknown(
         arguments,
@@ -298,6 +313,7 @@ TOOL_VALIDATORS = {
     "learning.get_progress": validate_learning_get_progress,
     "learning.record_progress": validate_learning_record_progress,
     "conversation.persist_extraction": validate_conversation_persist_extraction,
+    "conversation.get_messages": validate_conversation_get_messages,
     "toefl.record_evaluation": validate_toefl_record_evaluation,
     "user_facts.upsert": validate_user_facts_upsert,
     "learning.record_assessment": validate_learning_record_assessment,

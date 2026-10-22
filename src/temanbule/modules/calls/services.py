@@ -22,7 +22,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from temanbule.modules.calls.models import CallSession, CallTurn
 from temanbule.modules.catalog.services import RuntimeSnapshotBuilder
-from temanbule.modules.conversations.models import ConversationSession
+from temanbule.modules.conversations.models import ConversationMessage, ConversationSession
+from temanbule.modules.reliability.outbox import record_outbox_event
 from temanbule.platform.errors import ConflictError, NotFoundError, ValidationError
 from temanbule.platform.security import new_ulid
 
@@ -212,8 +213,46 @@ class CallService:
         if conversation is not None and conversation.state == "active":
             conversation.state = "completed"
             conversation.ended_at = datetime.now(UTC)
+            # Outbox atomik: memicu ingestion transcript call oleh flow
+            # conversation_ingestion (background) — pipeline yang sama dengan
+            # akhiri session chat (api-events.md).
+            message_count = (
+                await self.session.execute(
+                    select(func.count(ConversationMessage.id)).where(
+                        ConversationMessage.session_id == session_id
+                    )
+                )
+            ).scalar_one()
+            record_outbox_event(
+                self.session,
+                aggregate_type="conversation_session",
+                aggregate_id=session_id,
+                aggregate_version=await self._next_aggregate_version(session_id),
+                event_type="conversation.session_completed.v1",
+                payload={
+                    "session_id": session_id,
+                    "owner_user_id": user_id,
+                    "kind": conversation.kind,
+                    "end_reason": end_reason,
+                    "message_count": message_count,
+                },
+            )
         await self.session.flush()
         return call
+
+    async def _next_aggregate_version(self, session_id: str) -> int:
+        """Aggregate version monotonic untuk ordering event per session."""
+        from temanbule.modules.reliability.models import OutboxEvent
+
+        current = (
+            await self.session.execute(
+                select(func.coalesce(func.max(OutboxEvent.aggregate_version), 0)).where(
+                    OutboxEvent.aggregate_type == "conversation_session",
+                    OutboxEvent.aggregate_id == session_id,
+                )
+            )
+        ).scalar_one()
+        return current + 1
 
     async def get_call(self, *, user_id: str, session_id: str) -> CallSession:
         return await self._owned_call(user_id, session_id)

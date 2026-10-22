@@ -97,7 +97,47 @@ async def conversation_persist_extraction_handler(
     )
     session.add(record)
     await session.flush()
+
+    # Outbox atomik: extraction committed oleh flow ingestion (via MCP) memicu
+    # jobs facts/assessment independen — rantai yang sama seperti jalur chat.
+    from temanbule.modules.reliability.outbox import record_outbox_event
+
+    record_outbox_event(
+        session,
+        aggregate_type="conversation_session",
+        aggregate_id=session_id,
+        aggregate_version=await _next_conversation_aggregate_version(session, session_id),
+        event_type="conversation.extraction_committed.v1",
+        payload={
+            "extraction_id": record.id,
+            "session_id": session_id,
+            "owner_user_id": owner_user_id,
+            "source_start": source_start,
+            "source_end": source_end,
+            "flow_version": flow_version,
+        },
+    )
+    await session.flush()
     return {"resource_id": record.id, "resource_version": 1, "deduplicated": False}
+
+
+async def _next_conversation_aggregate_version(
+    session: AsyncSession, session_id: str
+) -> int:
+    """Aggregate version monotonic untuk ordering event per session."""
+    from sqlalchemy import func
+
+    from temanbule.modules.reliability.models import OutboxEvent
+
+    current = (
+        await session.execute(
+            select(func.coalesce(func.max(OutboxEvent.aggregate_version), 0)).where(
+                OutboxEvent.aggregate_type == "conversation_session",
+                OutboxEvent.aggregate_id == session_id,
+            )
+        )
+    ).scalar_one()
+    return current + 1
 
 
 async def toefl_record_evaluation_handler(
@@ -198,9 +238,65 @@ async def podcast_get_source_context_handler(
     }
 
 
+async def conversation_get_messages_handler(
+    session: AsyncSession, owner_user_id: str, arguments: dict[str, Any]
+) -> dict[str, Any]:
+    """Baca rentang pesan session milik owner (pull untuk flow ingestion).
+
+    Read-only; ownership ketat (cross-owner = NotFound, tanpa bocorkan
+    eksistensi). Mengembalikan id agar flow dapat merujuk pesan pada
+    ``conversation.persist_extraction`` (source_message_ids/evidence).
+    """
+    from temanbule.modules.conversations.models import (
+        ConversationMessage,
+        ConversationSession,
+    )
+
+    session_id: str = arguments["session_id"]
+    conversation = (
+        await session.execute(
+            select(ConversationSession).where(ConversationSession.id == session_id)
+        )
+    ).scalar_one_or_none()
+    if conversation is None or conversation.user_id != owner_user_id:
+        raise NotFoundError("Session tidak ditemukan.")
+
+    rows = (
+        (
+            await session.execute(
+                select(ConversationMessage)
+                .where(
+                    ConversationMessage.session_id == session_id,
+                    ConversationMessage.sequence >= arguments["source_start"],
+                    ConversationMessage.sequence <= arguments["source_end"],
+                )
+                .order_by(ConversationMessage.sequence.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return {
+        "session_id": session_id,
+        "source_start": arguments["source_start"],
+        "source_end": arguments["source_end"],
+        "messages": [
+            {
+                "id": row.id,
+                "sequence": row.sequence,
+                "role": row.role,
+                "modality": row.modality,
+                "text": row.text,
+            }
+            for row in rows
+        ],
+    }
+
+
 def register_ingestion_tools(service: ToolExecutionService) -> None:
     service.register_handler(
         "conversation.persist_extraction", conversation_persist_extraction_handler
     )
+    service.register_handler("conversation.get_messages", conversation_get_messages_handler)
     service.register_handler("toefl.record_evaluation", toefl_record_evaluation_handler)
     service.register_handler("podcast.get_source_context", podcast_get_source_context_handler)

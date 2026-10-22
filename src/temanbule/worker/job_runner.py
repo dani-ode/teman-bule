@@ -25,7 +25,6 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from temanbule.modules.conversations.models import ConversationMessage
 from temanbule.modules.knowledge.embedding_adapter import (
     DualEmbeddingAdapter,
     resolve_embedding_profile,
@@ -38,7 +37,11 @@ from temanbule.modules.knowledge.services import (
     KnowledgeService,
 )
 from temanbule.modules.reliability.models import BackgroundJob, BackgroundJobAttempt
-from temanbule.platform.errors import DependencyUnavailableError, ValidationError
+from temanbule.platform.errors import (
+    DependencyUnavailableError,
+    NotFoundError,
+    ValidationError,
+)
 from temanbule.platform.security import new_ulid
 from temanbule.platform.settings import Settings
 from temanbule.worker.handlers import (
@@ -147,8 +150,9 @@ class JobRunner:
         )
         safe_error: str | None = None
         outcome = JOB_STATE_SUCCEEDED
+        vendor_job_id: str | None = None
         try:
-            await self._dispatch(claimed)
+            vendor_job_id = await self._dispatch(claimed)
         except DependencyUnavailableError as exc:
             # Transient: jadwalkan ulang; bukan terminal.
             outcome = JOB_STATE_PENDING
@@ -168,10 +172,17 @@ class JobRunner:
             outcome=outcome,
             safe_error=safe_error,
             ended=datetime.now(UTC),
+            vendor_job_id=vendor_job_id,
         )
 
-    async def _dispatch(self, job: BackgroundJob) -> None:
-        """Routing per purpose ke processor nyata. Tidak ada mock."""
+    async def _dispatch(self, job: BackgroundJob) -> str | None:
+        """Routing per purpose ke processor nyata. Tidak ada mock.
+
+        Mengembalikan ``vendor_job_id`` bila processor mendispatch pekerjaan
+        background ke vendor (mis. conversation_ingestion) agar tercatat pada
+        attempt untuk reconciliation; ``None`` untuk processor sinkron.
+        """
+        vendor_job_id: str | None = None
         payload = json.loads(job.payload)
         async with self._session_factory() as session:
             if job.purpose == JOB_PURPOSE_INGESTION:
@@ -180,7 +191,7 @@ class JobRunner:
                         "Extraction adapter belum terkonfigurasi.",
                         code="EXTRACTION_ADAPTER_MISSING",
                     )
-                await IngestionService(session).run_ingestion(
+                vendor_job_id = await IngestionService(session).run_ingestion(
                     job_id=job.id,
                     session_id=payload["session_id"],
                     owner_user_id=payload["owner_user_id"],
@@ -188,6 +199,11 @@ class JobRunner:
                     source_end=payload["source_end"],
                     flow_version=payload["flow_version"],
                     extractor=self._extractor,
+                )
+                # Fire-and-forget: acceptance sukses → job selesai; vendor
+                # job_id disimpan untuk reconciliation/observability.
+                job.checkpoint = json.dumps(
+                    {"langflow_job_id": vendor_job_id}, sort_keys=True
                 )
             elif job.purpose == JOB_PURPOSE_EMBEDDING:
                 if self._embedder is None:
@@ -228,6 +244,7 @@ class JobRunner:
                     code="JOB_PURPOSE_UNKNOWN",
                 )
             await session.commit()
+        return vendor_job_id
 
     async def _run_analysis(
         self,
@@ -251,37 +268,35 @@ class JobRunner:
         source_start = payload["source_start"]
         source_end = payload["source_end"]
         flow_version = payload["flow_version"]
+        extraction_id = payload.get("extraction_id")
 
-        # Ambil pesan sumber sebagai konteks untuk flow analisis.
-        messages = (
-            (
-                await session.execute(
-                    select(ConversationMessage)
-                    .where(
-                        ConversationMessage.session_id == session_id,
-                        ConversationMessage.sequence >= source_start,
-                        ConversationMessage.sequence <= source_end,
-                    )
-                    .order_by(ConversationMessage.sequence.asc())
+        # Chain semantics: facts/assessment menganalisis extraction canonical
+        # yang sudah committed oleh flow ingestion (via tool MCP), bukan raw
+        # messages — extraction adalah single source of truth rangkaian ini.
+        from temanbule.modules.conversations.models import ConversationExtraction
+
+        extraction = (
+            await session.execute(
+                select(ConversationExtraction).where(
+                    ConversationExtraction.id == extraction_id
                 )
             )
-            .scalars()
-            .all()
-        )
-        message_payload = [
-            {
-                "sequence": m.sequence,
-                "role": m.role,
-                "modality": m.modality,
-                "text": m.text,
-            }
-            for m in messages
-        ]
+        ).scalar_one_or_none()
+        if (
+            extraction is None
+            or extraction.session_id != session_id
+            or extraction.owner_user_id != owner_user_id
+        ):
+            raise NotFoundError("Extraction sumber tidak ditemukan.")
+
         input_data = {
             "schema_version": flow_version,
             "flow_version": flow_version,
             "session_id": session_id,
-            "messages": message_payload,
+            "extraction_id": extraction.id,
+            "source_start": source_start,
+            "source_end": source_end,
+            "extraction": json.loads(extraction.data),
         }
         data = await self._extractor.run_purpose_flow(
             purpose=purpose,
@@ -501,6 +516,7 @@ class JobRunner:
         outcome: str,
         safe_error: str | None,
         ended: datetime,
+        vendor_job_id: str | None = None,
     ) -> None:
         """Tulis attempt + transisi state job secara fenced (anti stale)."""
         async with self._session_factory() as session:
@@ -515,6 +531,7 @@ class JobRunner:
             attempt.state = JOB_STATE_SUCCEEDED if outcome == JOB_STATE_SUCCEEDED else outcome
             attempt.ended_at = ended
             attempt.safe_error = safe_error
+            attempt.vendor_job_id = vendor_job_id
             session.add(attempt)
 
             # attempt_count sudah dinaikkan saat claim; jangan dinaikkan lagi.

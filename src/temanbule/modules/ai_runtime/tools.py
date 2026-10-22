@@ -51,7 +51,10 @@ PURPOSE_TOOL_ALLOWLIST: dict[str, set[str]] = {
         "podcast.get_source_context",
         "vocabulary.save",
     },
-    "conversation_ingestion": {"conversation.persist_extraction"},
+    "conversation_ingestion": {
+        "conversation.get_messages",
+        "conversation.persist_extraction",
+    },
     "user_fact_extraction": {"user_facts.upsert"},
     "learning_assessment": {"learning.record_assessment"},
     "learning_assistance": {"learning.get_progress"},
@@ -67,6 +70,7 @@ TOOL_REQUIRED_SCOPE: dict[str, str] = {
     "learning.get_progress": "learning:read",
     "learning.record_progress": "learning:write",
     "conversation.persist_extraction": "ingestion:write",
+    "conversation.get_messages": "ingestion:read",
     "toefl.record_evaluation": "toefl:evaluate",
     "user_facts.upsert": "facts:write",
     "learning.record_assessment": "assessment:write",
@@ -148,6 +152,7 @@ class ToolExecutionService:
             "vocabulary.get",
             "learning.get_progress",
             "podcast.get_source_context",
+            "conversation.get_messages",
         }
         if not is_read_tool and idempotency_key is None:
             raise ValidationError(

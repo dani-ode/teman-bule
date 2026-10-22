@@ -353,26 +353,14 @@ async def _extraction_fixture(db: AsyncSession) -> dict[str, object]:
             client_key=f"c{i}",
         )
 
-    class _Extractor:
-        async def extract(
-            self,
-            *,
-            session_id: str,
-            messages: list,
-            schema_version: str,
-            flow_version: str,
-        ) -> dict:
-            return {"summary": "s", "evidence": [1, 2]}
-
     ingestion = IngestionService(db)
-    extraction = await ingestion.run_ingestion(
-        job_id=new_ulid(),
+    extraction = await ingestion.record_extraction(
         session_id=conversation.id,
         owner_user_id=user.id,
         source_start=1,
         source_end=2,
         flow_version="conv-ing.v1",
-        extractor=_Extractor(),
+        data={"summary": "s", "evidence": [1, 2]},
     )
     return {"user_id": user.id, "session_id": conversation.id, "extraction_id": extraction.id}
 

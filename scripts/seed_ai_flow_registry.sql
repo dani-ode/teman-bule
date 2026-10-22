@@ -22,14 +22,18 @@ UPDATE ai_flow_registry SET status = 'staged'
 WHERE environment = 'development' AND status = 'active'
   AND purpose IN (
     'chat_session_create', 'chat_turn', 'chat_background',
-    'podcast_document_ingestion', 'podcast_script_generation'
+    'conversation_ingestion',
+    'podcast_document_ingestion', 'podcast_script_generation',
+    'chat_suggestion'
   )
   AND (environment, purpose, flow_version) NOT IN (
     ('development', 'chat_session_create', 'v1'),
     ('development', 'chat_turn', 'chat-turn.v1'),
     ('development', 'chat_background', 'chat-bg.v1'),
+    ('development', 'conversation_ingestion', 'conv-ing.v1'),
     ('development', 'podcast_document_ingestion', 'podcast-ing.v1'),
-    ('development', 'podcast_script_generation', 'podcast-script.v1')
+    ('development', 'podcast_script_generation', 'podcast-script.v1'),
+    ('development', 'chat_suggestion', 'suggestion.v1')
   );
 
 -- ===== Greeting message (migrasi 0010 + backfill komponen 0012) ============
@@ -99,6 +103,32 @@ ON CONFLICT (environment, purpose, flow_version) DO UPDATE SET
   input_tweak_component = EXCLUDED.input_tweak_component,
   output_component_name = EXCLUDED.output_component_name;
 
+-- ===== Conversation ingestion (background; dipicu worker setelah session
+-- chat/call/podcast selesai; flow menulis canonical langsung ke Postgres
+-- via tool MCP conversation.persist_extraction — fire-and-forget) =========
+-- flow 9cce08d2-... ; mode background ; tweaks Webhook-wcndY
+INSERT INTO ai_flow_registry (
+  id, environment, purpose, flow_version, langflow_flow_id,
+  input_schema_version, output_schema_version, prompt_version,
+  required_capabilities, tool_allowlist, timeout_ms, status,
+  input_tweak_component, output_component_name
+) VALUES (
+  '01KCONVINGESTION000000001', 'development', 'conversation_ingestion',
+  'conv-ing.v1', '9cce08d2-844d-40ec-b921-99436e8cf8c1',
+  '1', '1', NULL, NULL,
+  '["conversation.get_messages","conversation.persist_extraction"]', 300000, 'active',
+  'Webhook-wcndY', NULL
+)
+ON CONFLICT (environment, purpose, flow_version) DO UPDATE SET
+  langflow_flow_id = EXCLUDED.langflow_flow_id,
+  input_schema_version = EXCLUDED.input_schema_version,
+  output_schema_version = EXCLUDED.output_schema_version,
+  tool_allowlist = EXCLUDED.tool_allowlist,
+  timeout_ms = EXCLUDED.timeout_ms,
+  status = 'active',
+  input_tweak_component = EXCLUDED.input_tweak_component,
+  output_component_name = EXCLUDED.output_component_name;
+
 -- ===== Podcast document ingestion (migrasi 0011 + komponen dari 0012) ======
 -- flow ebe688b6-... ; mode background ; tweaks Webhook-iGh25
 INSERT INTO ai_flow_registry (
@@ -142,6 +172,45 @@ ON CONFLICT (environment, purpose, flow_version) DO UPDATE SET
   status = 'active',
   input_tweak_component = EXCLUDED.input_tweak_component,
   output_component_name = EXCLUDED.output_component_name;
+
+-- ===== Suggestion message (migrasi 0015) ===================================
+-- flow db13d00d-... ; mode sync ; tweaks Webhook-Nbrfi
+-- Dipicu dari conversation room: 3 contoh pesan untuk user yang baru belajar.
+INSERT INTO ai_flow_registry (
+  id, environment, purpose, flow_version, langflow_flow_id,
+  input_schema_version, output_schema_version, prompt_version,
+  required_capabilities, tool_allowlist, timeout_ms, status,
+  input_tweak_component, output_component_name
+) VALUES (
+  '01KSUGGESTION00000000001', 'development', 'chat_suggestion',
+  'suggestion.v1', 'db13d00d-fe41-4c1f-baca-9c0c2f6b3aa1',
+  '1', '1', NULL, NULL, '[]', 60000, 'active',
+  'Webhook-Nbrfi', 'suggestion_result'
+)
+ON CONFLICT (environment, purpose, flow_version) DO UPDATE SET
+  langflow_flow_id = EXCLUDED.langflow_flow_id,
+  input_schema_version = EXCLUDED.input_schema_version,
+  output_schema_version = EXCLUDED.output_schema_version,
+  timeout_ms = EXCLUDED.timeout_ms,
+  status = 'active',
+  input_tweak_component = EXCLUDED.input_tweak_component,
+  output_component_name = EXCLUDED.output_component_name;
+
+-- ===== Tool registry: conversation.get_messages (pull pesan oleh flow
+-- ingestion; read-only → idempotency tidak diwajibkan) ======================
+INSERT INTO tool_registry (
+  id, environment, name, schema_version, callcraft_spec_id, scope,
+  idempotency_policy, timeout_ms, status
+) VALUES (
+  '01KTOOLCONVGETMSGS00000001', 'development', 'conversation.get_messages',
+  '1', 'tools.v1.json#conversation.get_messages', 'ingestion:read',
+  'not_required', 30000, 'active'
+)
+ON CONFLICT (environment, name, schema_version) DO UPDATE SET
+  scope = EXCLUDED.scope,
+  idempotency_policy = EXCLUDED.idempotency_policy,
+  timeout_ms = EXCLUDED.timeout_ms,
+  status = 'active';
 
 COMMIT;
 

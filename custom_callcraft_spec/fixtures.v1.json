@@ -61,6 +61,15 @@
       "success_result": {"resource_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0E4", "resource_version": 3}
     },
     {
+      "tool": "conversation.get_messages",
+      "valid_arguments": {"session_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0E4", "source_start": 1, "source_end": 50},
+      "invalid_arguments": [
+        {"session_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0E4", "source_start": 10, "source_end": 5},
+        {"session_id": "not-a-ulid", "source_start": 1, "source_end": 50}
+      ],
+      "success_result": {"session_id": "01J8VQ2KX3G4Y5Z6A7B8C9D0E4", "source_start": 1, "source_end": 50, "messages": [{"id": "01J8VQ2KX3G4Y5Z6A7B8C9D0E5", "sequence": 1, "role": "user", "modality": "text", "text": "hello"}]}
+    },
+    {
       "tool": "conversation.persist_extraction",
       "valid_arguments": {"source_message_ids": ["01J8VQ2KX3G4Y5Z6A7B8C9D0E5"], "extraction": {"schema_version": "1", "summary": "User practiced past tense.", "evidence_message_ids": ["01J8VQ2KX3G4Y5Z6A7B8C9D0E5"]}},
       "invalid_arguments": [

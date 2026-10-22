@@ -71,6 +71,13 @@
       "invariants": ["Default deny for every AI flow", "Learning assistance remains read-only", "Published immutable content version required"]
     },
     {
+      "name": "conversation.get_messages", "schema_version": "1", "description": "Read an authorized session message range for ingestion flows (pull).",
+      "endpoint": "/internal/v1/tools/conversation:get-messages", "scope": "ingestion:read", "idempotency": "not_required", "purposes": ["conversation_ingestion"],
+      "inputSchema": {"type": "object", "additionalProperties": false, "properties": {"session_id": {"$ref": "common.schema.json#/$defs/id"}, "source_start": {"type": "integer", "minimum": 1}, "source_end": {"type": "integer", "minimum": 1}}, "required": ["session_id", "source_start", "source_end"]},
+      "outputSchema": {"type": "object", "additionalProperties": false, "properties": {"session_id": {"$ref": "common.schema.json#/$defs/id"}, "source_start": {"type": "integer"}, "source_end": {"type": "integer"}, "messages": {"type": "array", "items": {"type": "object", "additionalProperties": false, "properties": {"id": {"$ref": "common.schema.json#/$defs/id"}, "sequence": {"type": "integer"}, "role": {"$ref": "common.schema.json#/$defs/text"}, "modality": {"$ref": "common.schema.json#/$defs/text"}, "text": {"$ref": "common.schema.json#/$defs/text"}}, "required": ["id", "sequence", "role", "modality", "text"]}}}, "required": ["session_id", "source_start", "source_end", "messages"]},
+      "invariants": ["Session owned by grant owner", "Range bounded to catalog message cap", "Read-only; no message content mutation"]
+    },
+    {
       "name": "conversation.persist_extraction", "schema_version": "1", "description": "Persist canonical extraction with message provenance.",
       "endpoint": "/internal/v1/tools/conversation:persist-extraction", "scope": "ingestion:write", "idempotency": "required", "purposes": ["conversation_ingestion"],
       "inputSchema": {"type": "object", "additionalProperties": false, "properties": {"source_message_ids": {"$ref": "common.schema.json#/$defs/ids"}, "extraction": {"type": "object", "additionalProperties": false, "properties": {"schema_version": {"const": "1"}, "summary": {"$ref": "common.schema.json#/$defs/text"}, "evidence_message_ids": {"$ref": "common.schema.json#/$defs/ids"}}, "required": ["schema_version", "summary", "evidence_message_ids"]}}, "required": ["source_message_ids", "extraction"]},

@@ -43,21 +43,24 @@ SCHEMA_VERSION_EXTRACTION = "extraction.v1"
 
 
 class ExtractionPort(Protocol):
-    """Port ke flow conversation_ingestion (Langflow). Konkret menunggu DEC-10.
+    """Port ke flow conversation_ingestion (Langflow, mode background).
 
-    Input: rentang pesan tersimpan. Output: data canonical terstruktur
-    (summary/evidence) sesuai schema_version. TIDAK menyimpan ke DB —
-    persistence hanya lewat service ini.
+    Input: reference rentang pesan (session_id + sequence range + owner) —
+    isi pesan ditarik flow dari DB via tool MCP. Output: ``job_id`` acceptance
+    Langflow; backend TIDAK menyimpan extraction dan TIDAK menunggu output
+    (fire-and-forget).
     """
 
     async def extract(
         self,
         *,
         session_id: str,
-        messages: list[dict[str, Any]],
+        owner_user_id: str,
+        source_start: int,
+        source_end: int,
         schema_version: str,
         flow_version: str,
-    ) -> dict[str, Any]: ...
+    ) -> str: ...
 
 
 class EmbeddingPort(Protocol):
@@ -93,11 +96,74 @@ class IngestionService:
         source_end: int,
         flow_version: str,
         extractor: ExtractionPort,
-    ) -> ConversationExtraction:
-        """Proses rentang pesan → canonical extraction (idempoten).
+    ) -> str:
+        """Dispatch rentang pesan ke flow background; return ``job_id`` Langflow.
 
-        Replay job dengan parameter sama mengembalikan extraction existing
-        tanpa memanggil processor ulang.
+        Idempoten level job: ``BackgroundJob.dedupe_key`` per (session, range,
+        flow_version) mencegah dispatch ulang pada delivery event ganda; retry
+        job hanya terjadi bila dispatch sebelumnya GAGAL (vendor belum accept).
+        Acceptance sukses → SQL job succeeded dengan ``vendor_job_id`` dicatat
+        pada attempt/checkpoint untuk reconciliation.
+
+        Hasil canonical ditulis flow langsung ke Postgres (tool MCP
+        ``conversation.persist_extraction``); backend tidak menyimpan
+        ConversationExtraction di jalur ini dan tidak memancarkan
+        ``extraction_committed`` — konsumen downstream (facts/assessment)
+        dipicu oleh event yang dihasilkan persistence flow.
+        """
+        if source_end < source_start:
+            raise ValidationError("Range tidak valid.")
+
+        conversation = (
+            await self.session.execute(
+                select(ConversationSession).where(ConversationSession.id == session_id)
+            )
+        ).scalar_one_or_none()
+        if conversation is None or conversation.user_id != owner_user_id:
+            raise NotFoundError("Session tidak ditemukan.")
+
+        # Validasi rentang memiliki pesan sebelum dispatch — mencegah dispatch
+        # sia-sia ke vendor untuk range kosong. Isi pesan tidak dikirim; flow
+        # menariknya via tool MCP conversation.get_messages (pull).
+        message_count = (
+            await self.session.execute(
+                select(func.count(ConversationMessage.id)).where(
+                    ConversationMessage.session_id == session_id,
+                    ConversationMessage.sequence >= source_start,
+                    ConversationMessage.sequence <= source_end,
+                )
+            )
+        ).scalar_one()
+        if message_count == 0:
+            raise ValidationError("Rentang pesan kosong.")
+
+        return await extractor.extract(
+            session_id=session_id,
+            owner_user_id=owner_user_id,
+            source_start=source_start,
+            source_end=source_end,
+            schema_version=SCHEMA_VERSION_EXTRACTION,
+            flow_version=flow_version,
+        )
+
+    async def record_extraction(
+        self,
+        *,
+        session_id: str,
+        owner_user_id: str,
+        source_start: int,
+        source_end: int,
+        flow_version: str,
+        data: dict[str, Any],
+    ) -> ConversationExtraction:
+        """Simpan extraction canonical dari flow (tool MCP persist_extraction).
+
+        Inilah jalur tulis yang dipanggil flow background lewat tool
+        ``conversation.persist_extraction`` setelah ingestion selesai di sisi
+        Langflow — BUKAN dari job runner. Idempoten per (session, range,
+        schema, flow_version): replay mengembalikan baris existing. Outbox
+        ``conversation.extraction_committed.v1`` memicu facts/assessment
+        jobs independen.
         """
         if source_end < source_start:
             raise ValidationError("Range tidak valid.")
@@ -123,40 +189,6 @@ class IngestionService:
         ).scalar_one_or_none()
         if conversation is None or conversation.user_id != owner_user_id:
             raise NotFoundError("Session tidak ditemukan.")
-
-        messages = (
-            (
-                await self.session.execute(
-                    select(ConversationMessage)
-                    .where(
-                        ConversationMessage.session_id == session_id,
-                        ConversationMessage.sequence >= source_start,
-                        ConversationMessage.sequence <= source_end,
-                    )
-                    .order_by(ConversationMessage.sequence.asc())
-                )
-            )
-            .scalars()
-            .all()
-        )
-        if not messages:
-            raise ValidationError("Rentang pesan kosong.")
-
-        payload = [
-            {
-                "sequence": m.sequence,
-                "role": m.role,
-                "modality": m.modality,
-                "text": m.text,
-            }
-            for m in messages
-        ]
-        data = await extractor.extract(
-            session_id=session_id,
-            messages=payload,
-            schema_version=SCHEMA_VERSION_EXTRACTION,
-            flow_version=flow_version,
-        )
 
         extraction = ConversationExtraction(
             id=new_ulid(),

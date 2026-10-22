@@ -57,7 +57,12 @@ requires_db = pytest.mark.skipif(not DATABASE_URL, reason="TEST_DATABASE_URL tid
 
 
 class FakeExtractor:
-    """TEST DOUBLE — bukan bukti kompatibilitas Langflow (DEC-10 pending)."""
+    """TEST DOUBLE dispatch background — mengembalikan vendor job_id.
+
+    Mode background (pull): backend mengirim envelope reference (session_id +
+    range), flow menarik pesan via MCP dan menulis canonical sendiri; backend
+    menerima acceptance (job_id) tanpa output sinkron.
+    """
 
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
@@ -66,15 +71,21 @@ class FakeExtractor:
         self,
         *,
         session_id: str,
-        messages: list[dict[str, Any]],
+        owner_user_id: str,
+        source_start: int,
+        source_end: int,
         schema_version: str,
         flow_version: str,
-    ) -> dict[str, Any]:
-        self.calls.append({"session_id": session_id, "count": len(messages)})
-        return {
-            "summary": f"summary of {len(messages)} messages",
-            "evidence": [m["sequence"] for m in messages],
-        }
+    ) -> str:
+        self.calls.append(
+            {
+                "session_id": session_id,
+                "owner_user_id": owner_user_id,
+                "source_start": source_start,
+                "source_end": source_end,
+            }
+        )
+        return f"lf-job-{len(self.calls)}"
 
 
 class FakeEmbedder:
@@ -200,12 +211,13 @@ async def _profile_fixture(db: AsyncSession) -> list[str]:
 
 
 @requires_db
-async def test_ingestion_idempotent_replay(db: AsyncSession) -> None:
+async def test_ingestion_dispatch_returns_vendor_job_id(db: AsyncSession) -> None:
+    """Dispatch background: mengembalikan job_id vendor, tanpa extraction lokal."""
     fx = await _conversation_fixture(db)
     service = IngestionService(db)
     extractor = FakeExtractor()
 
-    first = await service.run_ingestion(
+    vendor_job_id = await service.run_ingestion(
         job_id=new_ulid(),
         session_id=fx["session_id"],
         owner_user_id=fx["user_id"],
@@ -214,19 +226,51 @@ async def test_ingestion_idempotent_replay(db: AsyncSession) -> None:
         flow_version="conv-ing.v1",
         extractor=extractor,
     )
-    assert len(extractor.calls) == 1
+    assert vendor_job_id == "lf-job-1"
+    assert extractor.calls == [
+        {
+            "session_id": fx["session_id"],
+            "owner_user_id": fx["user_id"],
+            "source_start": 1,
+            "source_end": 2,
+        }
+    ]
+    # Dispatch fire-and-forget tidak menulis extraction; itu tanggung jawab
+    # flow via tool MCP (record_extraction).
+    count = (
+        await db.execute(
+            select(func.count(ConversationExtraction.id)).where(
+                ConversationExtraction.session_id == fx["session_id"]
+            )
+        )
+    ).scalar_one()
+    assert count == 0
 
-    replayed = await service.run_ingestion(
-        job_id=new_ulid(),
+
+@requires_db
+async def test_record_extraction_idempotent_replay(db: AsyncSession) -> None:
+    """Jalur tulis flow (tool MCP): idempoten per range+schema+flow."""
+    fx = await _conversation_fixture(db)
+    service = IngestionService(db)
+
+    first = await service.record_extraction(
         session_id=fx["session_id"],
         owner_user_id=fx["user_id"],
         source_start=1,
         source_end=2,
         flow_version="conv-ing.v1",
-        extractor=extractor,
+        data={"summary": "summary", "evidence": [1, 2]},
+    )
+
+    replayed = await service.record_extraction(
+        session_id=fx["session_id"],
+        owner_user_id=fx["user_id"],
+        source_start=1,
+        source_end=2,
+        flow_version="conv-ing.v1",
+        data={"summary": "summary", "evidence": [1, 2]},
     )
     assert replayed.id == first.id
-    assert len(extractor.calls) == 1  # processor tidak dipanggil ulang
 
     count = (
         await db.execute(
@@ -243,6 +287,7 @@ async def test_ingestion_rejects_invalid_range_and_owner(db: AsyncSession) -> No
     fx = await _conversation_fixture(db)
     service = IngestionService(db)
     extractor = FakeExtractor()
+    extract_calls_before = len(extractor.calls)
 
     with pytest.raises(ValidationError):
         await service.run_ingestion(
@@ -276,6 +321,8 @@ async def test_ingestion_rejects_invalid_range_and_owner(db: AsyncSession) -> No
             flow_version="conv-ing.v1",
             extractor=extractor,
         )
+    # Semua penolakan terjadi SEBELUM dispatch vendor.
+    assert len(extractor.calls) == extract_calls_before
 
 
 @requires_db

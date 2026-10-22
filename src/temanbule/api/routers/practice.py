@@ -25,6 +25,7 @@ from temanbule.modules.conversations.chat import ChatService
 from temanbule.modules.conversations.langflow import ChatStreamEvent
 from temanbule.modules.conversations.models import ConversationSession, PracticeCategory
 from temanbule.modules.conversations.services import ConversationService
+from temanbule.modules.conversations.suggestion import SuggestionResult
 from temanbule.platform.errors import AppError
 from temanbule.platform.settings import Settings
 
@@ -94,6 +95,11 @@ class CreateVoiceMessageRequest(BaseModel):
     # Durasi audio dari client (recorder) — disimpan saat INSERT, append-only.
     audio_duration_ms: int | None = Field(default=None, ge=0)
     client_message_id: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class SuggestionResponse(BaseModel):
+    session_id: str
+    suggestions: list[str]
 
 
 class MessageResponse(BaseModel):
@@ -454,6 +460,26 @@ async def list_messages(
         )
         for m in messages
     ]
+
+
+@router.post("/sessions/{session_id}/suggestions", response_model=SuggestionResponse)
+async def get_suggestions(
+    session_id: str,
+    current_user: CurrentUser,
+    session: SessionDep,
+    settings: SettingsDep,
+) -> SuggestionResponse:
+    """Ambil 3 suggestion pesan untuk user di conversation room.
+
+    Frontend menembak endpoint ini saat user menekan tombol suggestion;
+    backend meneruskan konteks session (session_id + category_id + history)
+    ke flow Langflow ``suggestion_message`` dan mengembalikan 3 teks
+    suggestion. Suggestion tidak disimpan ke history chat.
+    """
+    result: SuggestionResult = await ChatService(session, settings).get_suggestions(
+        user_id=current_user.id, session_id=session_id
+    )
+    return SuggestionResponse(session_id=session_id, suggestions=result.suggestions)
 
 
 @router.post("/sessions/{session_id}:complete", response_model=SessionResponse)

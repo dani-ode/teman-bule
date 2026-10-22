@@ -20,6 +20,10 @@ from temanbule.modules.conversations.session_create import (
     LangflowSessionCreateAdapter,
     SessionCreateResult,
 )
+from temanbule.modules.conversations.suggestion import (
+    LangflowSuggestionAdapter,
+    SuggestionResult,
+)
 from temanbule.modules.media.models import MediaObject
 from temanbule.platform.errors import (
     AppError,
@@ -50,13 +54,15 @@ class _PreparedTurn:
 class ChatService:
     def __init__(self, session: AsyncSession, settings: Settings,
                  adapter: LangflowChatAdapter | None = None,
-                 session_create_adapter: LangflowSessionCreateAdapter | None = None):
+                 session_create_adapter: LangflowSessionCreateAdapter | None = None,
+                 suggestion_adapter: LangflowSuggestionAdapter | None = None):
         self.session = session
         self.settings = settings
         self.adapter = adapter or LangflowChatAdapter(settings)
         self.session_create_adapter = session_create_adapter or LangflowSessionCreateAdapter(
             settings
         )
+        self.suggestion_adapter = suggestion_adapter or LangflowSuggestionAdapter(settings)
         # Storage key audio TTS yang sudah direlokasi per session (session chat
         # single-user sehingga turn diproses sekuensial). Hanya bookkeeping
         # internal; resolusi history memakai key stabil turunan message_id.
@@ -288,6 +294,59 @@ class ChatService:
                     "first_message": None,
                 },
             )
+
+    async def get_suggestions(
+        self, *, user_id: str, session_id: str
+    ) -> SuggestionResult:
+        """Ambil 3 suggestion pesan untuk user via flow Langflow suggestion_message.
+
+        Flow menerima konteks session (session_id + category_id + history
+        ringkas) dan mengembalikan 3 teks suggestion. Tidak ada persistensi
+        — suggestion bersifat ephemeral dan bukan bagian dari history chat.
+        """
+        if not self.settings.feature_ai_enabled:
+            raise FeatureUnavailableError("AI sedang dinonaktifkan.")
+        conversations = ConversationService(self.session, self.settings)
+        conversation = await conversations.get_owned_session(
+            user_id=user_id, session_id=session_id,
+        )
+        if conversation.state != "active":
+            raise ConflictError("Session sudah tidak aktif.", code="SESSION_CLOSED")
+        binding = await resolve_flow(
+            self.session,
+            environment=self.settings.app_env,
+            purpose="chat_suggestion",
+        )
+        context = await chat_context(
+            self.session, conversation.runtime_snapshot_id, user_id
+        )
+        history = await conversations.list_messages(user_id=user_id, session_id=session_id)
+        practice = await conversations.get_practice_session(session_id=session_id)
+        envelope = {
+            "schema_version": binding.input_schema_version,
+            "request_id": new_ulid(),
+            "purpose": "chat_suggestion",
+            "user": {"user_id": user_id},
+            "session": {
+                "session_id": session_id,
+                "runtime_snapshot_id": conversation.runtime_snapshot_id,
+                "history": [
+                    {
+                        "role": message.role,
+                        "text": message.text,
+                        "created_at": message.created_at.isoformat(),
+                    }
+                    for message in history
+                ],
+            },
+            "persona": context["persona"],
+            "ai_configuration": context["ai_configuration"],
+            "input": {
+                "agent_code": context["agent_code"],
+                "category_id": practice.category_id,
+            },
+        }
+        return await self.suggestion_adapter.run(binding, envelope)
 
     async def send(self, *, user_id: str, session_id: str, text: str,
                    client_key: str | None) -> dict[str, Any]:

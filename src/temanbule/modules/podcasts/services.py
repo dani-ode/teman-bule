@@ -638,8 +638,62 @@ class PodcastService:
         playback.end_reason = end_reason
         playback.lease_owner = None
         playback.lease_until = None
+        # Akhiri conversation session induk dan picu ingestion (pipeline yang
+        # sama dengan akhiri session chat/call) bila playback merekam pesan.
+        from temanbule.modules.conversations.models import (
+            ConversationMessage,
+            ConversationSession,
+        )
+
+        conversation = (
+            await self.session.execute(
+                select(ConversationSession).where(
+                    ConversationSession.id == playback.session_id
+                )
+            )
+        ).scalar_one_or_none()
+        if conversation is not None and conversation.state == "active":
+            conversation.state = "completed"
+            conversation.ended_at = datetime.now(UTC)
+            message_count = (
+                await self.session.execute(
+                    select(func.count(ConversationMessage.id)).where(
+                        ConversationMessage.session_id == playback.session_id
+                    )
+                )
+            ).scalar_one()
+            record_outbox_event(
+                self.session,
+                aggregate_type="conversation_session",
+                aggregate_id=playback.session_id,
+                aggregate_version=await self._next_conversation_aggregate_version(
+                    playback.session_id
+                ),
+                event_type="conversation.session_completed.v1",
+                payload={
+                    "session_id": playback.session_id,
+                    "owner_user_id": user_id,
+                    "kind": conversation.kind,
+                    "end_reason": end_reason,
+                    "message_count": message_count,
+                },
+            )
         await self.session.flush()
         return playback
+
+    async def _next_conversation_aggregate_version(self, session_id: str) -> int:
+        """Aggregate version monotonic untuk ordering event per session."""
+        from temanbule.modules.reliability.models import OutboxEvent
+
+        current = (
+            await self.session.execute(
+                select(func.coalesce(func.max(OutboxEvent.aggregate_version), 0)).where(
+                    OutboxEvent.aggregate_type == "conversation_session",
+                    OutboxEvent.aggregate_id == session_id,
+                )
+            )
+        ).scalar_one()
+        return current + 1
 
     async def cache_audio(
         self,

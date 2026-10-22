@@ -1,16 +1,20 @@
 """Extraction adapter konkret: Langflow Workflow API v2 (conversation_ingestion).
 
 Kontrak (langflow-flows.md, services.py ExtractionPort):
-- Default POST /api/v2/workflows, flow_id di body, mode sync. Path v1 hanya
-  untuk konfigurasi rollback eksplisit; tidak ada fallback otomatis.
-- Input: rentang pesan tersimpan diserialisasi sebagai JSON string pada
-  ``input_value`` (input_type chat), ``session_id`` dipetakan sebagai session
-  flow. Output: teks hasil extraction di-parse sebagai JSON; bila bukan JSON
-  valid dikembalikan ``{"raw_text": text}`` agar persistence tetap canonical.
+- POST /api/v2/workflows, flow_id di body, ``mode="background"`` — flow
+  ingestion berjalan async di Langflow dan menulis hasil canonical langsung
+  ke Postgres via tool MCP (``conversation.persist_extraction``); backend
+  cukup menerima acceptance ``job_id`` (fire-and-forget, tanpa polling).
+  Path v1 hanya untuk konfigurasi rollback eksplisit; tidak ada fallback
+  otomatis.
+- Input: envelope terstruktur (schema_version/flow_version/session/messages)
+  diserialisasi sebagai JSON string pada ``tweaks[<input_component>].data``;
+  nama komponen Webhook target dipin per environment di
+  ``ai_flow_registry.input_tweak_component`` (bukan hardcode di kode).
 - API key hanya dipakai server-side via header ``x-api-key`` dan tidak pernah
-  dilog. Tidak ada fake extraction: semua kegagalan (timeout/network/HTTP/
-  response tidak valid) → DependencyUnavailableError sehingga SQL job tetap
-  nonterminal dan dapat di-retry.
+  dilog. Tidak ada fake dispatch: semua kegagalan (timeout/network/HTTP/
+  acceptance tidak valid) → DependencyUnavailableError sehingga SQL job tetap
+  nonterminal dan dapat di-retry — Langflow belum menerima pekerjaan.
 """
 
 from __future__ import annotations
@@ -73,40 +77,55 @@ class LangflowExtractionAdapter:
         self,
         *,
         session_id: str,
-        messages: list[dict[str, Any]],
+        owner_user_id: str,
+        source_start: int,
+        source_end: int,
         schema_version: str,
         flow_version: str,
-    ) -> dict[str, Any]:
-        """Jalankan flow conversation_ingestion untuk rentang pesan.
+    ) -> str:
+        """Dispatch flow conversation_ingestion mode background; return ``job_id``.
 
-        Mengembalikan data canonical terstruktur (dict). TIDAK menyimpan DB;
-        persistence hanya lewat IngestionService. Semua kegagalan vendor
-        menghasilkan DependencyUnavailableError — tidak ada output palsu.
+        Envelope RAMPING — hanya reference (session_id + rentang sequence +
+        versi schema/flow + owner); isi pesan TIDAK dikirim. Flow menarik
+        pesan langsung dari Postgres via tool MCP ``conversation.get_messages``
+        (pull), lalu menulis hasil canonical via ``conversation.persist_extraction``.
+        Backend TIDAK menunggu output dan TIDAK menyimpan extraction.
+
+        Response acceptance divalidasi ketat: ``object == "job"``,
+        ``status == "queued"``, ``job_id`` wajib ada. Semua kegagalan vendor
+        menghasilkan DependencyUnavailableError — tidak ada dispatch palsu,
+        SQL job tetap nonterminal untuk retry.
         """
-        input_value = json.dumps(
+        binding = await self._resolver("conversation_ingestion", flow_version)
+        input_component = (binding.input_tweak_component or "").strip()
+        if not input_component:
+            raise DependencyUnavailableError(
+                "Registry flow conversation_ingestion belum mem-pin input_tweak_component.",
+                code="FLOW_NOT_CONFIGURED",
+            )
+        envelope = json.dumps(
             {
                 "schema_version": schema_version,
                 "flow_version": flow_version,
                 "session_id": session_id,
-                "messages": messages,
+                "owner_user_id": owner_user_id,
+                "source_start": source_start,
+                "source_end": source_end,
             },
             sort_keys=True,
         )
         payload: dict[str, Any] = {
-            "input_value": input_value,
-            "input_type": "chat",
-            "output_type": "chat",
+            "flow_id": binding.flow_id,
+            "mode": "background",
             "session_id": session_id,
-            "tweaks": {},
+            "tweaks": {input_component: {"data": envelope}},
         }
-        binding = await self._resolver("conversation_ingestion", flow_version)
         body = await self._run_flow(
             flow_id=binding.flow_id,
             payload=payload,
             timeout_seconds=binding.timeout_ms / 1000,
         )
-        text = self._extract_output_text(body)
-        return self._parse_extraction_text(text)
+        return self._validate_acceptance(body)
 
     async def run_purpose_flow(
         self,
@@ -155,7 +174,10 @@ class LangflowExtractionAdapter:
                 key: value for key, value in payload.items()
                 if key not in {"input_type", "output_type"}
             }
-            payload = {**payload, "flow_id": flow_id, "mode": "sync"}
+            # Caller yang menentukan mode (sync untuk purpose flow lama,
+            # background untuk ingestion dispatch); default sync.
+            payload = {**payload, "flow_id": flow_id}
+            payload.setdefault("mode", "sync")
         timeout = httpx.Timeout(
             min(timeout_seconds, self._config.timeout_seconds),
             connect=self._config.connect_timeout_seconds,
@@ -212,7 +234,7 @@ class LangflowExtractionAdapter:
                 "Langflow extraction response envelope tidak valid.",
                 code="LANGFLOW_INVALID_RESPONSE",
             )
-        if workflow_v2 and (
+        if workflow_v2 and payload.get("mode") == "sync" and (
             body.get("status") != "completed"
             or body.get("has_errors", False) is not False
             or bool(body.get("errors"))
@@ -222,6 +244,33 @@ class LangflowExtractionAdapter:
                 "Langflow workflow belum berhasil selesai.", code="LANGFLOW_INVALID_RESPONSE"
             )
         return body
+
+    @staticmethod
+    def _validate_acceptance(body: dict[str, Any]) -> str:
+        """Validasi acceptance mode background; return ``job_id`` Langflow.
+
+        Response valid: ``{"object": "job", "status": "queued", "job_id": ...}``.
+        Acceptance bukan completion — flow tetap bisa gagal nanti, tetapi
+        pekerjaan sudah diterima vendor sehingga SQL job dapat dianggap sukses
+        (reconciliation memakai vendor_job_id pada checkpoint/attempt).
+        """
+        if body.get("object") != "job":
+            raise DependencyUnavailableError(
+                "Langflow ingestion acceptance envelope tidak valid.",
+                code="LANGFLOW_INVALID_RESPONSE",
+            )
+        if body.get("status") != "queued" or body.get("errors"):
+            raise DependencyUnavailableError(
+                "Langflow ingestion tidak di-accept.",
+                code="LANGFLOW_RUN_REJECTED",
+            )
+        job_id = body.get("job_id")
+        if not isinstance(job_id, str) or not job_id.strip():
+            raise DependencyUnavailableError(
+                "Langflow ingestion acceptance tanpa job_id.",
+                code="LANGFLOW_INVALID_RESPONSE",
+            )
+        return job_id
 
     # --- Response parsing --------------------------------------------------
 
