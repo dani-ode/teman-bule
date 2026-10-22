@@ -32,7 +32,7 @@ compose-check:
 infra-up: compose-check
 	$(COMPOSE) up -d --wait postgres redis
 down:
-	$(COMPOSE) down
+	$(COMPOSE) --profile application --profile realtime --profile maintenance down
 build: compose-check
 	test -f src/temanbule/api/main.py
 	test -f alembic.ini

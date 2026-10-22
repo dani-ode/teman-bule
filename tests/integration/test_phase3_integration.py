@@ -250,7 +250,9 @@ async def test_list_practice_sessions_filters(db: AsyncSession) -> None:
     assert all(code == "elean" for _, _, code in elean_rows)
 
     # Filter category_id.
-    cat_b_rows = await service.list_practice_sessions(user_id=fx["user_id"], category_id=category_b.id)
+    cat_b_rows = await service.list_practice_sessions(
+        user_id=fx["user_id"], category_id=category_b.id
+    )
     assert [c.id for c, _, _ in cat_b_rows] == [s_elean_b.id]
 
     # Filter gabungan agent + kategori.

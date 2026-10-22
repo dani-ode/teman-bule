@@ -185,7 +185,7 @@ class MediaService:
         *,
         user_id: str,
         media_id: str,
-        stt: "LangflowSttAdapter",
+        stt: LangflowSttAdapter,
         environment: str,
     ) -> str:
         """Transkripsi voice message via flow Langflow purpose ``stt``.
