@@ -86,3 +86,80 @@ async def test_login_unverified_rejected(session):
 
     with pytest.raises(UnauthorizedError, match="belum diverifikasi"):
         await auth.login(email=email, password="supersecretpassword1")  # noqa: S106 - test fixture
+
+
+def _oauth_txn():
+    """OauthTransaction dummy untuk complete_google_login."""
+    from datetime import UTC, datetime, timedelta
+
+    from temanbule.modules.identity.models import OauthTransaction
+    from temanbule.platform.security import new_ulid
+
+    return OauthTransaction(
+        id=new_ulid(),
+        state_hash="s" * 64,
+        nonce_hash="n" * 64,
+        encrypted_pkce_verifier="v",
+        intent="login",
+        bound_user_id=None,
+        browser_binding_hash="b" * 64,
+        expires_at=datetime.now(UTC) + timedelta(minutes=5),
+        created_at=datetime.now(UTC),
+    )
+
+
+@pytest.mark.skipif(not DATABASE_URL, reason="TEST_DATABASE_URL tidak diset")
+async def test_google_login_verified_email_conflict(session):
+    """Email verified + subject Google baru → GOOGLE_LINK_REQUIRED (no auto-link)."""
+    from datetime import UTC, datetime
+
+    from temanbule.modules.identity.models import User
+    from temanbule.platform.errors import ConflictError
+    from temanbule.platform.security import new_ulid
+
+    settings = _make_settings()
+    auth = AuthService(session, settings)
+    user = User(
+        id=new_ulid(),
+        normalized_email="glink-verified@example.com",
+        email_verified_at=datetime.now(UTC),
+        status="active",
+        auth_epoch=0,
+    )
+    session.add(user)
+    await session.flush()
+
+    with pytest.raises(ConflictError) as exc_info:
+        await auth.complete_google_login(
+            txn=_oauth_txn(),
+            google_subject="google-sub-conflict",
+            google_email="glink-verified@example.com",
+        )
+    assert exc_info.value.code == "GOOGLE_LINK_REQUIRED"
+
+
+@pytest.mark.skipif(not DATABASE_URL, reason="TEST_DATABASE_URL tidak diset")
+async def test_google_login_unverified_email_auto_links(session):
+    """Email belum verified + Google login → tautkan identitas, verifikasi, dan login."""
+    settings = _make_settings()
+    auth = AuthService(session, settings)
+    email = "glink-unverified@example.com"
+    await auth.register(email=email, password="supersecretpassword1")  # noqa: S106 - test fixture
+
+    from temanbule.modules.identity.repository import IdentityRepository
+
+    issued = await auth.complete_google_login(
+        txn=_oauth_txn(),
+        google_subject="google-sub-autolink",
+        google_email=email,
+    )
+    assert issued.user_id
+    assert issued.refresh_token
+
+    repo = IdentityRepository(session)
+    user = await repo.get_user_by_email(email)
+    assert user is not None
+    assert user.email_verified_at is not None
+    identity = await repo.get_identity("google", "google-sub-autolink")
+    assert identity is not None
+    assert identity.user_id == user.id

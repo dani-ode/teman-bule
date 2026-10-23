@@ -466,23 +466,32 @@ class AuthService:
                 raise UnauthorizedError("Email Google diperlukan untuk registrasi.")
             normalized = normalize_email(google_email)
             existing = await self.repo.get_user_by_email(normalized)
-            if existing is not None:
-                # Email sudah ada: jangan auto-link; minta login + explicit link
+            if existing is not None and existing.email_verified_at is not None:
+                # Email sudah ada & terverifikasi: jangan auto-link; minta login + explicit link
                 raise ConflictError(
                     "Email sudah terdaftar. Login lalu tautkan Google dari Profile.",
                     code="GOOGLE_LINK_REQUIRED",
                 )
             now = datetime.now(UTC)
-            user = User(
-                id=new_ulid(),
-                normalized_email=normalized,
-                email_verified_at=now,
-                status="active",
-                auth_epoch=0,
-            )
-            self.repo.add_user(user)
-            await self.session.flush()
-            self.repo.add_profile(UserProfile(user_id=user.id))
+            if existing is not None:
+                # Akun belum terverifikasi: Google sudah membuktikan kepemilikan email
+                # (email_verified=true di ID token), jadi aman untuk tautkan identitas
+                # dan tandai email terverifikasi. Mencegah deadlock akun tak terkunci.
+                user = existing
+                user.email_verified_at = now
+                user.auth_epoch += 1
+                await self._revoke_all_sessions_for_user(user.id)
+            else:
+                user = User(
+                    id=new_ulid(),
+                    normalized_email=normalized,
+                    email_verified_at=now,
+                    status="active",
+                    auth_epoch=0,
+                )
+                self.repo.add_user(user)
+                await self.session.flush()
+                self.repo.add_profile(UserProfile(user_id=user.id))
             self.repo.add_identity(
                 AuthIdentity(
                     id=new_ulid(), user_id=user.id, provider="google", subject=google_subject
