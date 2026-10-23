@@ -33,9 +33,12 @@ _SUBJECTS = {
 # Deep-link path sesuai linking.ts di app Expo (src/core/navigation/linking.ts):
 #   VerifyEmail:   'auth/verify-email'
 #   ResetPassword: 'auth/reset-password'
-_PATHS = {
-    "email_verify": "auth/verify-email",
-    "password_reset": "auth/reset-password",
+# Slug purpose pada endpoint /v1/auth/redirect/{purpose} (auth_redirect.py),
+# yang selanjutnya me-redirect ke deep-link path app (auth/verify-email atau
+# auth/reset-password sesuai src/core/navigation/linking.ts).
+_REDIRECT_SLUGS = {
+    "email_verify": "verify-email",
+    "password_reset": "reset-password",
 }
 
 _BODIES = {
@@ -126,10 +129,19 @@ def _html_body(purpose: str, link: str) -> str:
     )
 
 
-def _app_link(settings: Settings, path: str, token: str) -> str:
-    """Bangun deep link app dari scheme yang dikonfigurasi (default temanbule://)."""
-    scheme = (settings.auth_app_deep_link_scheme or "temanbule").strip().rstrip(":/")
-    return f"{scheme}://{path}?token={quote(token, safe='')}"
+def _app_link(settings: Settings, purpose: str, token: str) -> str:
+    """Bangun link email HTTPS yang bisa diklik.
+
+    Email client hanya mengaktifkan hyperlink http(s)://, sehingga kita kirim
+    link HTTPS ke endpoint backend /v1/auth/redirect/{slug}?token=... yang
+    me-redirect ke deep link app. Deep link `temanbule://` mentah tidak bisa
+    diklik di Gmail/Outlook.
+
+    Base diambil dari auth_email_link_base_url, fallback ke app_public_url.
+    """
+    base = (settings.auth_email_link_base_url or settings.app_public_url).rstrip("/")
+    slug = _REDIRECT_SLUGS[purpose]
+    return f"{base}/v1/auth/redirect/{slug}?token={quote(token, safe='')}"
 
 
 async def handle_auth_email_requested(
@@ -199,7 +211,7 @@ async def handle_auth_email_requested(
         logger.info("auth_email_skipped_duplicate_delivery", extra={"purpose": purpose})
         return
 
-    link = _app_link(settings, _PATHS[purpose], token)
+    link = _app_link(settings, purpose, token)
     body = _BODIES[purpose].format(link=link)
     html_body = _html_body(purpose, link)
 

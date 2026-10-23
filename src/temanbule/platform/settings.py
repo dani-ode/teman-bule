@@ -101,6 +101,9 @@ class Settings(BaseSettings):
     auth_frontend_success_url: str = "temanbule://profile"
     auth_frontend_error_url: str = "temanbule://login"
     auth_app_deep_link_scheme: str = "temanbule"
+    # Base URL publik (https) untuk link email yang bisa diklik; endpoint backend
+    # me-redirect ke deep link app. Default memakai app_public_url.
+    auth_email_link_base_url: str = ""
     auth_password_min_length: int = 8
     auth_argon2_memory_kib: int = 65536
     auth_argon2_time_cost: int = 3

@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 
 from temanbule.api.middleware import BodySizeLimitMiddleware, RequestIdMiddleware
 from temanbule.api.routers import auth as auth_router
+from temanbule.api.routers import auth_redirect as auth_redirect_router
 from temanbule.api.routers import billing as billing_router
 from temanbule.api.routers import byok as byok_router
 from temanbule.api.routers import calls as calls_router
@@ -144,6 +145,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Routers
     app.include_router(health_router.router)
     app.include_router(auth_router.router)
+    app.include_router(auth_redirect_router.router)
     app.include_router(google_auth_router.router)
     app.include_router(profile_router.router)
     app.include_router(plans_router.router)
